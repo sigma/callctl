@@ -1,5 +1,5 @@
 import { Command, message, StateEvent, StateValue } from "@meetdeck/protocol";
-import { type AriaElement, ControlsNotFoundError, HTMLModel, UIElement } from "../meet/model.js";
+import { ControlsNotFoundError, HTMLModel, type UIElement } from "../meet/model.js";
 import type { Transport } from "../transport/transport.js";
 import type { MeetPlugin } from "./plugin.js";
 
@@ -10,50 +10,79 @@ import type { MeetPlugin } from "./plugin.js";
  */
 
 export interface HandModel {
-  onHandStateChange: () => void;
+  /**
+   * Subscribe to hand raise/lower transitions. Additive (not a settable field)
+   * for the same reason as {@link Model.onMuteStateChange}: `installHooks` runs
+   * once per transport, and a single field let the no-op MIDI transport clobber
+   * the websocket's push.
+   */
+  onHandStateChange: (listener: () => void) => void;
   getHandState: () => boolean;
   getElement: (label: string) => UIElement | undefined;
 }
 
 class HTMLHandModel implements HandModel {
   readonly #model: HTMLModel;
-  readonly #observer: MutationObserver;
+  readonly #handListeners = new Set<() => void>();
+  #lastLowered: boolean | undefined;
+  #rescanQueued = false;
 
   constructor(model: HTMLModel, doc: Document = document) {
     this.#model = model;
 
-    const handleHandStateChange = (mutationsList: MutationRecord[]): void => {
-      for (const mutation of mutationsList) {
-        if (mutation.type !== "attributes") {
-          continue;
-        }
-        const target = mutation.target as AriaElement;
-        if (
-          (target.ariaLabel?.startsWith("Raise hand") ?? false) ||
-          (target.ariaLabel?.startsWith("Lower hand") ?? false)
-        ) {
-          // Call dynamically so HandPlugin's reassignment takes effect (the
-          // legacy code captured the empty default into a const — see the same
-          // fix in HTMLModel).
-          this.onHandStateChange();
-        }
-      }
-    };
-
-    this.#observer = new MutationObserver(handleHandStateChange);
-    this.#observer.observe(doc.body, {
+    // Same shape as HTMLModel's mute observer: watch broadly (childList +
+    // aria-label) from documentElement and re-derive the hand state, since Meet
+    // re-renders the toolbar button rather than mutating it in place. The button
+    // reads "Raise hand …" when lowered and "Lower hand …" when raised;
+    // `aria-pressed` is never set, so we key off the label, not the pressed
+    // state (which always looked "lowered").
+    const observer = new MutationObserver(() => this.#scheduleRescan());
+    observer.observe(doc.documentElement, {
+      subtree: true,
+      childList: true,
       attributes: true,
       attributeFilter: ["aria-label"],
-      attributeOldValue: true,
-      subtree: true,
     });
   }
 
-  onHandStateChange: () => void = () => {};
+  onHandStateChange(listener: () => void): void {
+    this.#handListeners.add(listener);
+  }
 
+  #scheduleRescan(): void {
+    if (this.#rescanQueued) {
+      return;
+    }
+    this.#rescanQueued = true;
+    queueMicrotask(() => {
+      this.#rescanQueued = false;
+      this.#rescan();
+    });
+  }
+
+  #rescan(): void {
+    const raise = this.#model.getElement("Raise hand") !== undefined;
+    const lower = this.#model.getElement("Lower hand") !== undefined;
+    if (!raise && !lower) {
+      return; // the toolbar hand button isn't present right now — don't guess
+    }
+    const lowered = !lower;
+    if (this.#lastLowered !== lowered) {
+      this.#lastLowered = lowered;
+      for (const listener of this.#handListeners) {
+        listener();
+      }
+    }
+  }
+
+  /**
+   * Whether the hand is lowered. Keyed off the toolbar button's label: a
+   * "Lower hand" button is only present while the hand is raised. (The
+   * host-only "Lower all hands" / "Lower <name>'s hand" controls don't contain
+   * the substring "Lower hand", so they don't confuse this.)
+   */
   getHandState(): boolean {
-    const e = new UIElement(this.#model.getAriaElement("hand"));
-    return !e.pressed();
+    return this.#model.getElement("Lower hand") === undefined;
   }
 
   getElement(label: string): UIElement | undefined {
@@ -135,9 +164,7 @@ class HandPlugin implements MeetPlugin {
 
   installHooks(t: Transport): void {
     const state = this.#state;
-    this.#model.onHandStateChange = () => {
-      state.sendHandState(t);
-    };
+    this.#model.onHandStateChange(() => state.sendHandState(t));
   }
 
   installHandlers(t: Transport): void {

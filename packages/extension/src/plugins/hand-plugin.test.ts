@@ -18,7 +18,7 @@ class FakeHandModel implements HandModel {
     this.raised = v;
   }
 
-  onHandStateChange(): void {}
+  onHandStateChange(_listener: () => void): void {}
 
   getHandState(): boolean {
     return this.raised;

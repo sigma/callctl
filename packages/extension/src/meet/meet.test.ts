@@ -6,8 +6,8 @@ import { HTMLModel, InputDevice } from "./model.js";
 /**
  * DOM-level tests for the Meet model/API under jsdom. These pin the selector
  * contract (aria-label / data-is-muted) the whole port hinges on, and prove the
- * push-back fix: a DOM-driven mute change must actually reach `onMuteStateChange`
- * (the legacy code captured the empty default into a const and dropped it).
+ * push-back: a DOM-driven mute change must actually reach the subscribed
+ * `onMuteStateChange` listeners so the plugin's toggle LEDs can follow.
  */
 
 /**
@@ -127,16 +127,50 @@ describe("ModeledState", () => {
   });
 });
 
-describe("mute-state push-back (regression: reassigned onMuteStateChange must fire)", () => {
-  test("a DOM data-is-muted change reaches the reassigned handler", async () => {
+describe("mute-state push-back", () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  test("an in-place data-is-muted change reaches the reassigned handler", async () => {
     const mic = control("Turn off microphone", { muted: false });
     const model = new HTMLModel();
 
     const seen: InputDevice[] = [];
-    model.onMuteStateChange = (dev) => seen.push(dev);
+    model.onMuteStateChange((dev) => seen.push(dev));
 
     mic.setAttribute("data-is-muted", "true");
-    await new Promise((r) => setTimeout(r, 0)); // let the MutationObserver flush
+    await flush();
+
+    expect(seen).toEqual([InputDevice.MIC]);
+  });
+
+  test("a node-replacement change (Meet's re-render) is detected too", async () => {
+    // The real-world failure: Meet swaps the control for a fresh node rather
+    // than mutating data-is-muted in place, so an attribute-only observer never
+    // fired. The re-scan must still notice the new state.
+    const mic = control("Turn off microphone", { muted: false });
+    const model = new HTMLModel();
+
+    const seen: InputDevice[] = [];
+    model.onMuteStateChange((dev) => seen.push(dev));
+
+    mic.remove();
+    control("Turn off microphone", { muted: true });
+    await flush();
+
+    expect(seen).toEqual([InputDevice.MIC]);
+  });
+
+  test("does not re-notify when the state hasn't actually changed", async () => {
+    const mic = control("Turn off microphone", { muted: false });
+    const model = new HTMLModel();
+
+    const seen: InputDevice[] = [];
+    model.onMuteStateChange((dev) => seen.push(dev));
+
+    mic.setAttribute("data-is-muted", "true"); // real change → one push
+    await flush();
+    mic.setAttribute("data-is-muted", "true"); // no-op mutation → must not push again
+    await flush();
 
     expect(seen).toEqual([InputDevice.MIC]);
   });

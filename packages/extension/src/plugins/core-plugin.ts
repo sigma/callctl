@@ -29,9 +29,7 @@ class CorePlugin implements MeetPlugin {
       state.transmit(t);
     };
     // And push again whenever Meet's mute state changes under us.
-    this.#model.onMuteStateChange = (dev: InputDevice) => {
-      state.sendMuteState(t, dev);
-    };
+    this.#model.onMuteStateChange((dev) => state.sendMuteState(t, dev));
   }
 
   installHandlers(t: Transport): void {
