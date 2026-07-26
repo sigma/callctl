@@ -1,0 +1,351 @@
+<!doctype html>
+<!--
+  PROTOTYPE — throwaway. Answers wayfinder ticket #4:
+  "Widget UI shell: placement, form, survival in Meet DOM."
+
+  Three RADICALLY DIFFERENT placement/form variants of the in-Meet transport
+  control widget, rendered over a faux-Meet backdrop so density & placement are
+  judgeable. Switch with the floating bottom bar or ← / → arrow keys, or ?variant=A|B|C.
+
+  This prototype answers PLACEMENT + FORM only. SURVIVAL (re-attach after Meet
+  re-renders / <body> swaps) is NOT a look-and-feel variant — it is settled by the
+  existing observer pattern in src/meet/model.ts (root at document.documentElement,
+  full re-query rescan). See NOTES.md next to this file.
+
+  Run: open this file in any browser. No build step.
+    open packages/extension/prototypes/widget-shell/index.html
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PROTOTYPE — in-Meet transport widget shell</title>
+<style>
+  :root {
+    --meet-bg: #202124;
+    --meet-surface: #303134;
+    --meet-border: #3c4043;
+    --accent: #8ab4f8;
+    --on: #34a853;
+    --off: #5f6368;
+    --danger: #ea4335;
+    --text: #e8eaed;
+    --text-dim: #9aa0a6;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: "Google Sans", Roboto, system-ui, sans-serif; }
+  body { background: var(--meet-bg); color: var(--text); overflow: hidden; }
+
+  /* ---------- faux-Meet backdrop (NOT part of the design being judged) ---------- */
+  .meet {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+  }
+  .meet__stage {
+    flex: 1; padding: 16px; display: grid; gap: 12px;
+    grid-template-columns: 2fr 1fr; grid-template-rows: 1fr 1fr;
+  }
+  .tile {
+    background: linear-gradient(135deg, #2a2b2e, #3a3b3f);
+    border-radius: 12px; position: relative; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .tile.big { grid-row: 1 / span 2; }
+  .tile__avatar {
+    width: 92px; height: 92px; border-radius: 50%;
+    background: #5f6368; display: flex; align-items: center; justify-content: center;
+    font-size: 34px; color: #e8eaed;
+  }
+  .tile__name {
+    position: absolute; left: 12px; bottom: 10px; font-size: 13px;
+    background: rgba(0,0,0,.45); padding: 3px 8px; border-radius: 6px;
+  }
+  .meet__bar {
+    height: 72px; display: flex; align-items: center; justify-content: center;
+    gap: 14px; background: var(--meet-bg);
+  }
+  .meet__time { position: absolute; left: 24px; color: var(--text-dim); font-size: 13px; }
+  .ctl {
+    width: 48px; height: 48px; border-radius: 50%; border: none; cursor: default;
+    background: var(--meet-surface); color: var(--text); font-size: 18px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .ctl.leave { width: 64px; border-radius: 24px; background: var(--danger); }
+  .ctl.active { background: #3c4043; }
+
+  /* ================= WIDGET VARIANTS ================= */
+  /* Only ONE variant is visible at a time (body[data-variant]). */
+  [data-widget] { display: none; }
+  body[data-variant="A"] [data-widget="A"],
+  body[data-variant="B"] [data-widget="B"],
+  body[data-variant="C"] [data-widget="C"] { display: block; }
+
+  /* shared toggle switch */
+  .sw { position: relative; width: 34px; height: 18px; flex: none; }
+  .sw input { opacity: 0; width: 0; height: 0; }
+  .sw .track {
+    position: absolute; inset: 0; border-radius: 999px; background: var(--off);
+    transition: background .15s;
+  }
+  .sw .track::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+    border-radius: 50%; background: #fff; transition: transform .15s;
+  }
+  .sw input:checked + .track { background: var(--on); }
+  .sw input:checked + .track::after { transform: translateX(16px); }
+
+  /* ---------- VARIANT A: floating draggable card, bottom-right ---------- */
+  .cardA {
+    position: fixed; right: 20px; bottom: 92px; width: 260px;
+    background: var(--meet-surface); border: 1px solid var(--meet-border);
+    border-radius: var(--radius); box-shadow: 0 8px 28px rgba(0,0,0,.5);
+    font-size: 13px; z-index: 50;
+  }
+  .cardA__head {
+    display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+    border-bottom: 1px solid var(--meet-border); cursor: grab;
+  }
+  .cardA__head b { font-weight: 500; flex: 1; }
+  .cardA__grip { color: var(--text-dim); }
+  .cardA__body { padding: 6px 12px 12px; }
+  .rowA {
+    display: flex; align-items: center; gap: 10px; padding: 9px 0;
+    border-bottom: 1px solid rgba(255,255,255,.05);
+  }
+  .rowA:last-child { border-bottom: none; }
+  .rowA .lbl { flex: 1; }
+  .rowA .lbl small { display: block; color: var(--text-dim); font-size: 11px; }
+  .midiList { margin: 4px 0 0 0; padding: 8px 10px; background: rgba(0,0,0,.25); border-radius: 8px; }
+  .midiList label { display: flex; align-items: center; gap: 8px; padding: 3px 0; color: var(--text-dim); }
+  .midiList label.on { color: var(--text); }
+  .badge { font-size: 10px; padding: 1px 6px; border-radius: 999px; background: #3c4043; color: var(--text-dim); }
+
+  /* ---------- VARIANT B: native inline control-bar button + popover ---------- */
+  .popB {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: 84px; width: 300px; background: var(--meet-surface);
+    border: 1px solid var(--meet-border); border-radius: var(--radius);
+    box-shadow: 0 8px 28px rgba(0,0,0,.5); padding: 14px; z-index: 50;
+  }
+  .popB::after {
+    content: ""; position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%);
+    border: 8px solid transparent; border-top-color: var(--meet-surface); border-bottom: none;
+  }
+  .popB h4 { margin: 0 0 10px; font-weight: 500; font-size: 14px; }
+  .gridB { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .cellB {
+    background: rgba(0,0,0,.25); border: 1px solid var(--meet-border);
+    border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .cellB .top { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+  .cellB .top span { flex: 1; }
+  .cellB.wide { grid-column: 1 / span 2; }
+  .chipRow { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font-size: 11px; padding: 3px 9px; border-radius: 999px; cursor: default;
+    border: 1px solid var(--meet-border); color: var(--text-dim); background: transparent;
+  }
+  .chip.sel { background: var(--accent); color: #202124; border-color: var(--accent); }
+  /* the injected native-style control-bar button (rendered inside the fake bar) */
+  .ctl.widgetBtn { background: #1e3a5f; color: var(--accent); position: relative; }
+  .ctl.widgetBtn::after {
+    content: ""; position: absolute; top: 6px; right: 6px; width: 8px; height: 8px;
+    border-radius: 50%; background: var(--on);
+  }
+
+  /* ---------- VARIANT C: edge-docked collapsible rail, right side ---------- */
+  .railC {
+    position: fixed; right: 0; top: 50%; transform: translateY(-50%);
+    display: flex; z-index: 50;
+  }
+  .railC__strip {
+    background: var(--meet-surface); border: 1px solid var(--meet-border); border-right: none;
+    border-radius: 12px 0 0 12px; padding: 8px 6px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .railC__ico {
+    width: 40px; height: 40px; border-radius: 10px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; font-size: 15px; gap: 2px; position: relative;
+    background: rgba(0,0,0,.25);
+  }
+  .railC__ico small { font-size: 8px; color: var(--text-dim); letter-spacing: .3px; }
+  .railC__ico .dot { position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%; }
+  .railC__ico .dot.on { background: var(--on); }
+  .railC__ico .dot.off { background: var(--off); }
+  .railC__panel {
+    width: 232px; background: var(--meet-surface); border: 1px solid var(--meet-border);
+    border-radius: 12px 0 0 12px; box-shadow: -8px 0 28px rgba(0,0,0,.5);
+    padding: 12px; font-size: 13px;
+  }
+  .railC__panel h4 { margin: 0 0 10px; font-weight: 500; font-size: 13px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .5px; }
+  .rowC { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
+  .rowC .lbl { flex: 1; }
+  .devChk { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+  .devChk label { display: flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: 12px; }
+
+  /* ================= prototype switcher bar ================= */
+  .switcher {
+    position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 10px; z-index: 999;
+    background: #111; color: #fff; border: 1px solid #555; border-radius: 999px;
+    padding: 6px 8px; box-shadow: 0 4px 18px rgba(0,0,0,.6); font-size: 13px;
+    font-family: ui-monospace, monospace;
+  }
+  .switcher button {
+    width: 28px; height: 28px; border-radius: 50%; border: none; cursor: pointer;
+    background: #333; color: #fff; font-size: 15px;
+  }
+  .switcher button:hover { background: #555; }
+  .switcher .label { min-width: 220px; text-align: center; }
+  .switcher .label b { color: #8ab4f8; }
+  .switcher .hint { color: #888; font-size: 11px; }
+</style>
+</head>
+<body data-variant="A">
+
+  <!-- ===================== faux-Meet backdrop ===================== -->
+  <div class="meet" aria-hidden="true">
+    <div class="meet__stage">
+      <div class="tile big"><div class="tile__avatar">🧑</div><div class="tile__name">You</div></div>
+      <div class="tile"><div class="tile__avatar">👩</div><div class="tile__name">Priya</div></div>
+      <div class="tile"><div class="tile__avatar">🧔</div><div class="tile__name">Marco</div></div>
+    </div>
+    <div class="meet__bar">
+      <span class="meet__time">10:42 · standup</span>
+      <button class="ctl active">🎤</button>
+      <button class="ctl active">📹</button>
+      <button class="ctl">✋</button>
+      <button class="ctl">💬</button>
+      <!-- Variant B injects its button HERE, inline with native controls -->
+      <button class="ctl widgetBtn" data-widget="B" title="Transports">🎛️</button>
+      <button class="ctl leave">📞</button>
+    </div>
+  </div>
+
+  <!-- ===================== VARIANT A: floating card ===================== -->
+  <div class="cardA" data-widget="A">
+    <div class="cardA__head">
+      <span class="cardA__grip">⠿</span>
+      <b>Transports</b>
+      <span class="badge">2 live</span>
+    </div>
+    <div class="cardA__body">
+      <div class="rowA">
+        <div class="lbl">Stream Deck<small>ws · port 2395</small></div>
+        <label class="sw"><input type="checkbox" checked><span class="track"></span></label>
+      </div>
+      <div class="rowA">
+        <div class="lbl">Dev-bridge<small>route ws → 2396</small></div>
+        <label class="sw"><input type="checkbox"><span class="track"></span></label>
+      </div>
+      <div class="rowA">
+        <div class="lbl">MIDI<small>3 inputs seen</small></div>
+        <label class="sw"><input type="checkbox" checked><span class="track"></span></label>
+      </div>
+      <div class="midiList">
+        <label class="on"><input type="checkbox" checked> APC mini mk2</label>
+        <label class="on"><input type="checkbox" checked> Launchkey 25</label>
+        <label><input type="checkbox"> IAC Driver Bus 1</label>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== VARIANT B: popover (button is in the bar above) ===================== -->
+  <div class="popB" data-widget="B">
+    <h4>Transports</h4>
+    <div class="gridB">
+      <div class="cellB">
+        <div class="top"><span>Stream Deck</span><label class="sw"><input type="checkbox" checked><span class="track"></span></label></div>
+        <div class="badge">port 2395</div>
+      </div>
+      <div class="cellB">
+        <div class="top"><span>Dev-bridge</span><label class="sw"><input type="checkbox"><span class="track"></span></label></div>
+        <div class="badge">→ 2396</div>
+      </div>
+      <div class="cellB">
+        <div class="top"><span>MIDI</span><label class="sw"><input type="checkbox" checked><span class="track"></span></label></div>
+        <div class="badge">3 inputs</div>
+      </div>
+      <div class="cellB">
+        <div class="top"><span>Reactions</span><label class="sw"><input type="checkbox" checked><span class="track"></span></label></div>
+        <div class="badge">optional</div>
+      </div>
+      <div class="cellB wide">
+        <div class="top"><span>MIDI devices</span></div>
+        <div class="chipRow">
+          <button class="chip sel">APC mini mk2</button>
+          <button class="chip sel">Launchkey 25</button>
+          <button class="chip">IAC Bus 1</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== VARIANT C: edge rail ===================== -->
+  <div class="railC" data-widget="C">
+    <div class="railC__panel">
+      <h4>Transports</h4>
+      <div class="rowC">
+        <div class="lbl">Stream Deck</div>
+        <label class="sw"><input type="checkbox" checked><span class="track"></span></label>
+      </div>
+      <div class="rowC">
+        <div class="lbl">Dev-bridge</div>
+        <label class="sw"><input type="checkbox"><span class="track"></span></label>
+      </div>
+      <div class="rowC">
+        <div class="lbl">MIDI</div>
+        <label class="sw"><input type="checkbox" checked><span class="track"></span></label>
+      </div>
+      <div class="devChk">
+        <label><input type="checkbox" checked> APC mini mk2</label>
+        <label><input type="checkbox" checked> Launchkey 25</label>
+        <label><input type="checkbox"> IAC Driver Bus 1</label>
+      </div>
+    </div>
+    <div class="railC__strip">
+      <div class="railC__ico"><span class="dot on"></span>🎛️<small>SD</small></div>
+      <div class="railC__ico"><span class="dot off"></span>🌉<small>DEV</small></div>
+      <div class="railC__ico"><span class="dot on"></span>🎹<small>MIDI</small></div>
+    </div>
+  </div>
+
+  <!-- ===================== prototype switcher ===================== -->
+  <div class="switcher">
+    <button id="prev" title="Previous (←)">‹</button>
+    <div class="label"><b id="vkey">A</b> — <span id="vname">Floating card (bottom-right)</span></div>
+    <button id="next" title="Next (→)">›</button>
+    <span class="hint">← →</span>
+  </div>
+
+<script>
+  const VARIANTS = [
+    ["A", "Floating card (bottom-right)"],
+    ["B", "Native bar button + popover"],
+    ["C", "Edge-docked rail (right)"],
+  ];
+  const params = new URLSearchParams(location.search);
+  let idx = Math.max(0, VARIANTS.findIndex(([k]) => k === (params.get("variant") || "A").toUpperCase()));
+
+  function render() {
+    const [key, name] = VARIANTS[idx];
+    document.body.dataset.variant = key;
+    document.getElementById("vkey").textContent = key;
+    document.getElementById("vname").textContent = name;
+    const p = new URLSearchParams(location.search);
+    p.set("variant", key);
+    history.replaceState(null, "", "?" + p.toString());
+  }
+  function cycle(d) { idx = (idx + d + VARIANTS.length) % VARIANTS.length; render(); }
+
+  document.getElementById("prev").onclick = () => cycle(-1);
+  document.getElementById("next").onclick = () => cycle(1);
+  document.addEventListener("keydown", (e) => {
+    const t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    if (e.key === "ArrowLeft") cycle(-1);
+    if (e.key === "ArrowRight") cycle(1);
+  });
+  render();
+</script>
+</body>
+</html>
