@@ -121,9 +121,35 @@ export class HTMLModel implements Model {
     throw new ControlsNotFoundError(`No mute/unmute button found for ${inputDevice}`);
   }
 
+  /**
+   * The element's accessible name: its `aria-label`, or — when absent — the
+   * text of the element(s) its `aria-labelledby` points at. Meet increasingly
+   * labels controls via `aria-labelledby` (e.g. the participants button, whose
+   * name "People" lives in a referenced span), so matching on `aria-label`
+   * alone silently misses them.
+   */
+  #accessibleName(el: Element): string | null {
+    const label = el.getAttribute("aria-label");
+    if (label !== null) {
+      return label;
+    }
+    const labelledby = el.getAttribute("aria-labelledby");
+    if (labelledby !== null) {
+      const name = labelledby
+        .split(/\s+/)
+        .map((id) => this.doc.getElementById(id)?.textContent ?? "")
+        .join(" ")
+        .trim();
+      if (name !== "") {
+        return name;
+      }
+    }
+    return null;
+  }
+
   getAriaElement(label: string): AriaElement {
-    return [...this.doc.querySelectorAll<AriaElement>("[aria-label]")].filter((x) =>
-      x.ariaLabel?.includes(label),
+    return [...this.doc.querySelectorAll<AriaElement>("[aria-label], [aria-labelledby]")].filter(
+      (x) => this.#accessibleName(x)?.includes(label),
     )[0];
   }
 

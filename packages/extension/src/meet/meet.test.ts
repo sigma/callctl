@@ -77,7 +77,7 @@ describe("ModeledAPI", () => {
 
   test("leave/participants/chat click their respective controls", () => {
     const leave = control("Leave call");
-    const people = control("Show everyone");
+    const people = control("People");
     const chat = control("Chat with everyone");
     const api = new ModeledAPI(new HTMLModel());
 
@@ -88,6 +88,24 @@ describe("ModeledAPI", () => {
     expect(leave.click).toHaveBeenCalledOnce();
     expect(people.click).toHaveBeenCalledOnce();
     expect(chat.click).toHaveBeenCalledOnce();
+  });
+
+  test("toggleParticipants finds the People button labelled via aria-labelledby", () => {
+    // Mirror current Meet: the participants button has no aria-label; its name
+    // comes from a referenced element (the model must resolve aria-labelledby).
+    const labelSpan = document.createElement("span");
+    labelSpan.id = "people-label";
+    labelSpan.textContent = "People";
+    document.body.appendChild(labelSpan);
+
+    const button = document.createElement("div");
+    button.setAttribute("role", "button");
+    button.setAttribute("aria-labelledby", "people-label");
+    button.click = vi.fn();
+    document.body.appendChild(button);
+
+    new ModeledAPI(new HTMLModel()).toggleParticipants();
+    expect(button.click).toHaveBeenCalledOnce();
   });
 });
 

@@ -86,7 +86,9 @@ export class ModeledAPI implements API {
   }
 
   toggleParticipants(): void {
-    this.#model.getElement("Show everyone")?.click();
+    // Meet renamed this control: it is now the hover-tray "People" button, whose
+    // accessible name comes via aria-labelledby (see HTMLModel.#accessibleName).
+    this.#model.getElement("People")?.click();
   }
 
   toggleChat(): void {
