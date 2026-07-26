@@ -16,8 +16,26 @@ import type { MeetPlugin } from "./plugin.js";
 const REACTION_OPENER = "Send a reaction";
 const OPEN_WAIT_MS = 1500;
 
+/**
+ * Find a reaction button by its glyph using a **prefix** match. When a skin tone
+ * is selected, Meet appends a Fitzpatrick modifier to the emoji buttons that
+ * support one (👍→👍🏽, 👎, 👏), so their `aria-label` is no longer exactly the
+ * base glyph. An exact match would miss — and worse, `react()` would then assume
+ * the panel is closed and click "Send a reaction", *toggling the panel* instead
+ * of reacting. Prefix-matching hits both `"👍"` and `"👍🏽"`; it is unambiguous
+ * because no base reaction glyph is a prefix of another.
+ *
+ * We filter in JS rather than with a CSS `[aria-label^="…"]` selector: emoji are
+ * surrogate pairs, which the CSS attribute-prefix operator mishandles in some
+ * engines (jsdom), whereas `String.prototype.startsWith` is reliable everywhere.
+ */
 function glyphButton(doc: Document, glyph: string): HTMLElement | null {
-  return doc.querySelector<HTMLElement>(`button[aria-label="${glyph}"]`);
+  for (const el of doc.querySelectorAll<HTMLElement>("button[aria-label]")) {
+    if ((el.getAttribute("aria-label") ?? "").startsWith(glyph)) {
+      return el;
+    }
+  }
+  return null;
 }
 
 /** Resolve `data` to a glyph: a numeric ordinal (MIDI) maps via slug order. */
@@ -48,7 +66,7 @@ function waitFor(find: () => HTMLElement | null, timeoutMs: number): Promise<HTM
   });
 }
 
-class ReactAPI {
+export class ReactAPI {
   readonly #doc: Document;
 
   constructor(doc: Document = document) {
