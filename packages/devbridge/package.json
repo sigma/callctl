@@ -1,0 +1,32 @@
+{
+  "name": "@meetdeck/devbridge",
+  "version": "0.0.0",
+  "description": "Dev-only bridge that proxies the Stream Deck plugin websocket and exposes Meet DOM introspection over HTTP and MCP",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "meetdeck-devbridge": "dist/cli.js",
+    "meetdeck-devbridge-mcp": "dist/mcp-server.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "tsx src/cli.ts",
+    "mcp": "tsx src/mcp-server.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@meetdeck/protocol": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "ws": "^8.18.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/ws": "^8.5.12",
+    "tsx": "^4.23.1",
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.0"
+  }
+}
