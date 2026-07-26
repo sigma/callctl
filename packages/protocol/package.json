@@ -1,0 +1,21 @@
+{
+  "name": "@meetdeck/protocol",
+  "version": "0.0.0",
+  "description": "Shared websocket protocol between the Stream Deck plugin (server) and the Chrome extension (client)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -p tsconfig.json --watch"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}

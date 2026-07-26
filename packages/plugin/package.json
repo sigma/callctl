@@ -1,0 +1,27 @@
+{
+  "name": "@meetdeck/plugin",
+  "version": "0.0.0",
+  "description": "Stream Deck plugin for Google Meet",
+  "type": "module",
+  "scripts": {
+    "build": "rollup -c",
+    "watch": "rollup -c -w",
+    "dev": "rollup -c -w",
+    "link": "streamdeck link dev.yrh.meetdeck.sdPlugin",
+    "validate": "streamdeck validate dev.yrh.meetdeck.sdPlugin"
+  },
+  "dependencies": {
+    "@elgato/streamdeck": "^2.1.0",
+    "@meetdeck/protocol": "*",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^28.0.0",
+    "@rollup/plugin-node-resolve": "^15.3.0",
+    "@rollup/plugin-typescript": "^12.1.0",
+    "@types/ws": "^8.5.12",
+    "rollup": "^4.24.0",
+    "tslib": "^2.7.0",
+    "typescript": "^5.5.0"
+  }
+}

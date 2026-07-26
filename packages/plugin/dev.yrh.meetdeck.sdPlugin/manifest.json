@@ -1,0 +1,50 @@
+{
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+  "Name": "GMeet",
+  "Version": "0.1.0.0",
+  "Author": "Yann Hodique",
+  "Description": "A Stream Deck plugin to manage your Google Meet calls.",
+  "Category": "GMeet",
+  "URL": "https://github.com/sigma/meetdeck",
+  "Icon": "imgs/plugin/marketplace",
+  "CategoryIcon": "imgs/plugin/category-icon",
+  "CodePath": "bin/plugin.js",
+  "SDKVersion": 2,
+  "Software": {
+    "MinimumVersion": "6.5"
+  },
+  "OS": [
+    {
+      "Platform": "mac",
+      "MinimumVersion": "10.15"
+    },
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
+    }
+  ],
+  "Nodejs": {
+    "Version": "20",
+    "Debug": "enabled"
+  },
+  "UUID": "dev.yrh.meetdeck",
+  "Actions": [
+    {
+      "Name": "Mic toggle",
+      "UUID": "dev.yrh.meetdeck.mic-toggle",
+      "Icon": "imgs/actions/mic/icon",
+      "Tooltip": "Toggle your microphone",
+      "SupportedInMultiActions": false,
+      "States": [
+        {
+          "Image": "imgs/actions/mic/on",
+          "TitleAlignment": "middle"
+        },
+        {
+          "Image": "imgs/actions/mic/off",
+          "TitleAlignment": "middle"
+        }
+      ]
+    }
+  ]
+}
