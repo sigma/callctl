@@ -1,50 +1,357 @@
 {
-  "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
-  "Name": "GMeet",
-  "Version": "0.1.0.0",
-  "Author": "Yann Hodique",
-  "Description": "A Stream Deck plugin to manage your Google Meet calls.",
-  "Category": "GMeet",
-  "URL": "https://github.com/sigma/meetdeck",
-  "Icon": "imgs/plugin/marketplace",
-  "CategoryIcon": "imgs/plugin/category-icon",
-  "CodePath": "bin/plugin.js",
-  "SDKVersion": 2,
-  "Software": {
-    "MinimumVersion": "6.5"
-  },
-  "OS": [
-    {
-      "Platform": "mac",
-      "MinimumVersion": "10.15"
-    },
-    {
-      "Platform": "windows",
-      "MinimumVersion": "10"
-    }
-  ],
-  "Nodejs": {
-    "Version": "20",
-    "Debug": "enabled"
-  },
-  "UUID": "dev.yrh.meetdeck",
-  "Actions": [
-    {
-      "Name": "Mic toggle",
-      "UUID": "dev.yrh.meetdeck.mic-toggle",
-      "Icon": "imgs/actions/mic/icon",
-      "Tooltip": "Toggle your microphone",
-      "SupportedInMultiActions": false,
-      "States": [
-        {
-          "Image": "imgs/actions/mic/on",
-          "TitleAlignment": "middle"
-        },
-        {
-          "Image": "imgs/actions/mic/off",
-          "TitleAlignment": "middle"
-        }
-      ]
-    }
-  ]
+	"$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+	"Name": "GMeet",
+	"Version": "0.1.0.0",
+	"Author": "Yann Hodique",
+	"Description": "A Stream Deck plugin to manage your Google Meet calls.",
+	"Category": "GMeet",
+	"URL": "https://github.com/sigma/meetdeck",
+	"Icon": "imgs/plugin/marketplace",
+	"CategoryIcon": "imgs/plugin/category-icon",
+	"CodePath": "bin/plugin.js",
+	"SDKVersion": 2,
+	"Software": {
+		"MinimumVersion": "6.5"
+	},
+	"OS": [
+		{
+			"Platform": "mac",
+			"MinimumVersion": "10.15"
+		},
+		{
+			"Platform": "windows",
+			"MinimumVersion": "10"
+		}
+	],
+	"Nodejs": {
+		"Version": "20",
+		"Debug": "enabled"
+	},
+	"UUID": "dev.yrh.meetdeck",
+	"Actions": [
+		{
+			"Name": "Leave Call",
+			"UUID": "dev.yrh.meetdeck.leave-call",
+			"Icon": "imgs/actions/leave_call",
+			"Tooltip": "Leave Call",
+			"SupportedInMultiActions": true,
+			"States": [
+				{
+					"Image": "imgs/actions/leave_call",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Mic Off",
+			"UUID": "dev.yrh.meetdeck.mic-off",
+			"Icon": "imgs/actions/mic_off",
+			"Tooltip": "Mic Off",
+			"SupportedInMultiActions": true,
+			"States": [
+				{
+					"Image": "imgs/actions/mic_off",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Mic On",
+			"UUID": "dev.yrh.meetdeck.mic-on",
+			"Icon": "imgs/actions/mic_on",
+			"Tooltip": "Mic On",
+			"SupportedInMultiActions": true,
+			"States": [
+				{
+					"Image": "imgs/actions/mic_on",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Camera Off",
+			"UUID": "dev.yrh.meetdeck.camera-off",
+			"Icon": "imgs/actions/camera_off",
+			"Tooltip": "Camera Off",
+			"SupportedInMultiActions": true,
+			"States": [
+				{
+					"Image": "imgs/actions/camera_off",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Camera On",
+			"UUID": "dev.yrh.meetdeck.camera-on",
+			"Icon": "imgs/actions/camera_on",
+			"Tooltip": "Camera On",
+			"SupportedInMultiActions": true,
+			"States": [
+				{
+					"Image": "imgs/actions/camera_on",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Toggle Chat",
+			"UUID": "dev.yrh.meetdeck.toggle-chat",
+			"Icon": "imgs/actions/toggle_chat",
+			"Tooltip": "Toggle Chat",
+			"SupportedInMultiActions": true,
+			"States": [
+				{
+					"Image": "imgs/actions/toggle_chat",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Toggle Participants",
+			"UUID": "dev.yrh.meetdeck.toggle-participants",
+			"Icon": "imgs/actions/toggle_participants",
+			"Tooltip": "Toggle Participants",
+			"SupportedInMultiActions": true,
+			"States": [
+				{
+					"Image": "imgs/actions/toggle_participants",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Hand Off",
+			"UUID": "dev.yrh.meetdeck.hand-off",
+			"Icon": "imgs/actions/hand_off",
+			"Tooltip": "Hand Off",
+			"SupportedInMultiActions": true,
+			"States": [
+				{
+					"Image": "imgs/actions/hand_off",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Hand On",
+			"UUID": "dev.yrh.meetdeck.hand-on",
+			"Icon": "imgs/actions/hand_on",
+			"Tooltip": "Hand On",
+			"SupportedInMultiActions": true,
+			"States": [
+				{
+					"Image": "imgs/actions/hand_on",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "React wave",
+			"UUID": "dev.yrh.meetdeck.react-wave",
+			"Icon": "imgs/actions/react_wave",
+			"Tooltip": "React wave",
+			"SupportedInMultiActions": true,
+			"States": [
+				{
+					"Image": "imgs/actions/react_wave",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "React yes",
+			"UUID": "dev.yrh.meetdeck.react-yes",
+			"Icon": "imgs/actions/react_yes",
+			"Tooltip": "React yes",
+			"SupportedInMultiActions": true,
+			"States": [
+				{
+					"Image": "imgs/actions/react_yes",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "React no",
+			"UUID": "dev.yrh.meetdeck.react-no",
+			"Icon": "imgs/actions/react_no",
+			"Tooltip": "React no",
+			"SupportedInMultiActions": true,
+			"States": [
+				{
+					"Image": "imgs/actions/react_no",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "React clap",
+			"UUID": "dev.yrh.meetdeck.react-clap",
+			"Icon": "imgs/actions/react_clap",
+			"Tooltip": "React clap",
+			"SupportedInMultiActions": true,
+			"States": [
+				{
+					"Image": "imgs/actions/react_clap",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "React love",
+			"UUID": "dev.yrh.meetdeck.react-love",
+			"Icon": "imgs/actions/react_love",
+			"Tooltip": "React love",
+			"SupportedInMultiActions": true,
+			"States": [
+				{
+					"Image": "imgs/actions/react_love",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "React laugh",
+			"UUID": "dev.yrh.meetdeck.react-laugh",
+			"Icon": "imgs/actions/react_laugh",
+			"Tooltip": "React laugh",
+			"SupportedInMultiActions": true,
+			"States": [
+				{
+					"Image": "imgs/actions/react_laugh",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "React plus",
+			"UUID": "dev.yrh.meetdeck.react-plus",
+			"Icon": "imgs/actions/react_plus",
+			"Tooltip": "React plus",
+			"SupportedInMultiActions": true,
+			"States": [
+				{
+					"Image": "imgs/actions/react_plus",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "React party",
+			"UUID": "dev.yrh.meetdeck.react-party",
+			"Icon": "imgs/actions/react_party",
+			"Tooltip": "React party",
+			"SupportedInMultiActions": true,
+			"States": [
+				{
+					"Image": "imgs/actions/react_party",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "React rainbow",
+			"UUID": "dev.yrh.meetdeck.react-rainbow",
+			"Icon": "imgs/actions/react_rainbow",
+			"Tooltip": "React rainbow",
+			"SupportedInMultiActions": true,
+			"States": [
+				{
+					"Image": "imgs/actions/react_rainbow",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "React crab",
+			"UUID": "dev.yrh.meetdeck.react-crab",
+			"Icon": "imgs/actions/react_crab",
+			"Tooltip": "React crab",
+			"SupportedInMultiActions": true,
+			"States": [
+				{
+					"Image": "imgs/actions/react_crab",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "React blown",
+			"UUID": "dev.yrh.meetdeck.react-blown",
+			"Icon": "imgs/actions/react_blown",
+			"Tooltip": "React blown",
+			"SupportedInMultiActions": true,
+			"States": [
+				{
+					"Image": "imgs/actions/react_blown",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "React 100",
+			"UUID": "dev.yrh.meetdeck.react-100",
+			"Icon": "imgs/actions/react_100",
+			"Tooltip": "React 100",
+			"SupportedInMultiActions": true,
+			"States": [
+				{
+					"Image": "imgs/actions/react_100",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Mic Toggle",
+			"UUID": "dev.yrh.meetdeck.mic-toggle",
+			"Icon": "imgs/actions/mic_on",
+			"Tooltip": "Toggle your mic",
+			"SupportedInMultiActions": false,
+			"States": [
+				{
+					"Image": "imgs/actions/mic_on",
+					"TitleAlignment": "middle"
+				},
+				{
+					"Image": "imgs/actions/mic_off",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Camera Toggle",
+			"UUID": "dev.yrh.meetdeck.camera-toggle",
+			"Icon": "imgs/actions/camera_on",
+			"Tooltip": "Toggle your camera",
+			"SupportedInMultiActions": false,
+			"States": [
+				{
+					"Image": "imgs/actions/camera_on",
+					"TitleAlignment": "middle"
+				},
+				{
+					"Image": "imgs/actions/camera_off",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Hand Toggle",
+			"UUID": "dev.yrh.meetdeck.hand-toggle",
+			"Icon": "imgs/actions/hand_on",
+			"Tooltip": "Toggle your hand",
+			"SupportedInMultiActions": false,
+			"States": [
+				{
+					"Image": "imgs/actions/hand_on",
+					"TitleAlignment": "middle"
+				},
+				{
+					"Image": "imgs/actions/hand_off",
+					"TitleAlignment": "middle"
+				}
+			]
+		}
+	]
 }

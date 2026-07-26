@@ -1,7 +1,16 @@
 import streamDeck from "@elgato/streamdeck";
 
-import { MicToggle } from "./actions/mic-toggle.js";
+import { buildActions } from "./actions/index.js";
+import { MeetRemote } from "./remote/meet-remote.js";
 
-streamDeck.actions.registerAction(new MicToggle());
+// The plugin hosts the local websocket server; the Chrome extension dials in.
+const remote = new MeetRemote({ log: (m) => streamDeck.logger.info(m) });
+
+for (const action of buildActions(remote)) {
+  streamDeck.actions.registerAction(action);
+}
 
 streamDeck.connect();
+remote.start().catch((err) => {
+  streamDeck.logger.error(`failed to start remote server: ${err.message}`);
+});
