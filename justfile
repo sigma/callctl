@@ -52,6 +52,10 @@ dev-extension:
 
 # --- Quality -----------------------------------------------------------------
 
+# Run all unit tests (vitest)
+test:
+    pnpm -r test
+
 # Format all sources with biome
 fmt:
     biome format --write .
