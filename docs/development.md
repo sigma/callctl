@@ -103,6 +103,8 @@ GET  /query?selector=<css>            controls matching a CSS selector
 GET  /click?selector=<css>            click the first match
 GET  /command?event=<e>&data=<d>      inject a raw protocol command at the extension
 POST /command  {"event":"…","data":"…"}
+GET  /selectors                       read the extension's live selector config
+POST /selectors  {"handRaise":"…",…}  push a partial selector override (drift fix)
 ```
 
 Diagnostic idioms:
@@ -115,10 +117,50 @@ Diagnostic idioms:
 ### MCP server
 
 `.mcp.json` registers a stdio MCP server exposing the same ops as tools
-(`meet_dump`, `meet_query`, `meet_click`, `meet_command`, `meet_state`). It runs
-its own bridge, so **don't run it and an HTTP `dev-bridge` at the same time**
-(port clash). Requires `just build-devbridge` first, and a Claude Code session
-reload to pick up `.mcp.json`.
+(`meet_dump`, `meet_query`, `meet_click`, `meet_command`, `meet_state`,
+`meet_get_selectors`, `meet_set_selectors`). It runs its own bridge, so **don't
+run it and an HTTP `dev-bridge` at the same time** (port clash). Requires
+`just build-devbridge` first, and a Claude Code session reload to pick up
+`.mcp.json`.
+
+## Config-over-the-wire selectors (fixing drift without a reload)
+
+Every Meet control the extension drives is matched by an **accessible-name
+substring** (or, for mic/camera, an aria-label substring on `[data-is-muted]`).
+Google renames these over time — the usual cause of "a command builds but clicks
+nothing". Those substrings are **runtime data**, not hardcoded: they live in a
+`SelectorConfig` the extension holds in a `SelectorRegistry`, seeded from
+`DEFAULT_SELECTORS` (`@meetdeck/protocol`) and overridable over the wire.
+
+Keys: `mic`, `camera`, `leave`, `participants`, `chat`, `handRaise`, `handLower`,
+`reactionOpener`.
+
+Wire protocol (rides the normal websocket):
+
+```
+→ {event:"getSelectors"}                       ← {event:"selectors", data:<full JSON>}
+→ {event:"setSelectors", data:<partial JSON>}  ← {event:"selectors", data:<merged JSON>}
+```
+
+Because every DOM lookup reads the registry **fresh**, a pushed override takes
+effect on the *next command* — **no rebuild, no tab reload, no dropped call**.
+The extension also persists overrides to `chrome.storage.local` (`selectors`
+key) and re-applies them on load, so a field fix survives reloads. A malformed or
+empty value is ignored (`mergeSelectors`), so a bad push can never blank a
+selector out.
+
+**The drift-fix loop** (with a bridge up and a call open):
+
+```
+curl 'localhost:2397/dump?q=hand'                     # find the real aria-label
+curl 'localhost:2397/selectors'                        # see what's matched now
+curl -X POST localhost:2397/selectors \
+     -d '{"handRaise":"Raise hand","handLower":"Lower hand"}'
+# → merged config echoed back; retry the deck button — no reload needed
+```
+
+Once a fix is confirmed live, fold it into `DEFAULT_SELECTORS` so a clean install
+gets it too (that part *is* a code change + release, but no longer time-critical).
 
 ## Typical loops
 
