@@ -1,6 +1,5 @@
 import type { Message } from "@callctl/protocol";
-import type { MeetPlugin } from "../plugins/plugin.js";
-import type { Transport } from "./transport.js";
+import { BaseTransport, type Retargetable } from "./transport.js";
 
 /** How long to wait before redialing after a drop/failed connect. */
 const RECONNECTION_INTERVAL_SECS = 2;
@@ -10,19 +9,25 @@ const RECONNECTION_INTERVAL_SECS = 2;
  * `MeetRemote` server the plugin runs) and auto-reconnects every 2s while the
  * Meet tab is open.
  *
- * Faithful port of the legacy `WSProtocol`. It lives in the content script, so
- * it enjoys a long-lived context — the MV3 service-worker idle-kill never
- * touches it.
+ * Descendant of the legacy `WSProtocol`, now built on {@link BaseTransport} so
+ * it owns its teardown (`detach` runs parked disposers + closes the socket).
+ * It lives in the content script, so it enjoys a long-lived context — the MV3
+ * service-worker idle-kill never touches it.
+ *
+ * The port is mutable, not a readonly ctor arg: the instance outlives any single
+ * port. {@link retarget} performs a live port switch — redial on the new port
+ * while keeping every installed hook and handler in place. This is the whole of
+ * the dev-bridge port switch (#6) and the Options port change (#7): only *this*
+ * socket blips; the content script — and thus the call — never reloads.
  */
-export class WSProtocol implements Transport {
-  onConnect: () => void = () => {};
-
-  readonly #port: number;
+export class WSTransport extends BaseTransport implements Retargetable<number> {
+  #port: number;
   #ws: WebSocket | null = null;
   readonly #handlers = new Map<string, (msg: Message) => void>();
   #shut = false;
 
   constructor(port: number) {
+    super();
     this.#port = port;
     this.#connect();
   }
@@ -46,6 +51,8 @@ export class WSProtocol implements Transport {
     };
 
     ws.onopen = () => {
+      // Re-push state on (re)connect so the LEDs start correct — this is why the
+      // dev-bridge/port-change retarget is transparent: the redial fires this.
       this.onConnect();
     };
 
@@ -67,6 +74,19 @@ export class WSProtocol implements Transport {
     };
   }
 
+  /**
+   * Live port switch: redial on a new port without disturbing installed plugins.
+   * A no-op if the port is unchanged. Closing the current socket funnels into
+   * `onclose`, which reconnects to the updated `#port` (`#shut` stays false).
+   */
+  retarget(port: number): void {
+    if (port === this.#port) {
+      return;
+    }
+    this.#port = port;
+    this.#ws?.close();
+  }
+
   send(message: Message): void {
     if (this.#ws !== null && this.#ws.readyState === WebSocket.OPEN) {
       this.#ws.send(JSON.stringify(message));
@@ -75,15 +95,13 @@ export class WSProtocol implements Transport {
 
   handle(op: string, h: (msg: Message) => void): void {
     this.#handlers.set(op, h);
+    // Registering a handler is itself an installation → park its removal so
+    // `detach` unwires it (see BaseTransport).
+    this.onDetach(() => this.#handlers.delete(op));
   }
 
-  shutdown(): void {
-    this.#shut = true;
+  protected close(): void {
+    this.#shut = true; // stop the reconnect loop; detach is permanent for this instance
     this.#ws?.close();
-  }
-
-  acceptPlugin(plugin: MeetPlugin): void {
-    plugin.installHooks(this);
-    plugin.installHandlers(this);
   }
 }
