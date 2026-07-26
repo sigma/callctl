@@ -269,6 +269,7 @@
 			"Icon": "imgs/actions/mic_on",
 			"Tooltip": "Toggle your mic",
 			"SupportedInMultiActions": false,
+			"DisableAutomaticStates": true,
 			"States": [
 				{
 					"Image": "imgs/actions/mic_on",
@@ -286,6 +287,7 @@
 			"Icon": "imgs/actions/camera_on",
 			"Tooltip": "Toggle your camera",
 			"SupportedInMultiActions": false,
+			"DisableAutomaticStates": true,
 			"States": [
 				{
 					"Image": "imgs/actions/camera_on",
@@ -303,6 +305,7 @@
 			"Icon": "imgs/actions/hand_on",
 			"Tooltip": "Toggle your hand",
 			"SupportedInMultiActions": false,
+			"DisableAutomaticStates": true,
 			"States": [
 				{
 					"Image": "imgs/actions/hand_on",
