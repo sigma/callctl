@@ -70,6 +70,18 @@ export function defaultConfig(port: number = DEFAULT_PORT): TransportConfig {
   };
 }
 
+/**
+ * The port the ws client should dial. Dev-bridge mode re-points it at the
+ * bridge's proxy port; otherwise it dials the plugin port directly. This is the
+ * whole port-selection decision behind the live dev-bridge switch (#6): flipping
+ * `ws.devBridge.enabled` and re-reading this feeds a transparent
+ * `WSTransport.retarget` — a redial of the new port with plugins intact, no tab
+ * reload. Dev-bridge is a ws-only concept, so MIDI never consults this.
+ */
+export function wsPort(config: TransportConfig): number {
+  return config.ws.devBridge.enabled ? config.ws.devBridge.port : config.ws.port;
+}
+
 function get<T>(local: chrome.storage.LocalStorageArea, keys: string[]): Promise<Partial<T>> {
   return new Promise((resolve) => {
     local.get(keys, (items) => resolve(items as Partial<T>));
