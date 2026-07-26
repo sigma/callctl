@@ -7,6 +7,7 @@ import {
   loadConfig,
   saveConfig,
   type TransportConfig,
+  wsPort,
 } from "./config.js";
 
 /**
@@ -91,6 +92,24 @@ describe("loadConfig", () => {
     const { local, store } = fakeStorage({ port: 1234, selectors: { mute: "Mute" } });
     await loadConfig(local);
     expect(store.selectors).toEqual({ mute: "Mute" });
+  });
+});
+
+describe("wsPort", () => {
+  test("dials the plugin port when dev-bridge is off", () => {
+    expect(wsPort(defaultConfig(5555))).toBe(5555);
+  });
+
+  test("re-points to the dev-bridge port when dev-bridge is on", () => {
+    const config: TransportConfig = {
+      ...defaultConfig(5555),
+      ws: {
+        enabled: true,
+        port: 5555,
+        devBridge: { enabled: true, port: 2396 },
+      },
+    };
+    expect(wsPort(config)).toBe(2396);
   });
 });
 

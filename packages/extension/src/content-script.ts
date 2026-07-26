@@ -1,5 +1,5 @@
 import type { SelectorConfig } from "@callctl/protocol";
-import { loadConfig, type TransportConfig } from "./config.js";
+import { loadConfig, type TransportConfig, wsPort } from "./config.js";
 import { selectors } from "./meet/selectors.js";
 import { loadPlugins } from "./plugins/index.js";
 import { MidiTransport } from "./transport/midi-transport.js";
@@ -37,18 +37,20 @@ function init(
     // always-on behavior; the widget (#4) will drive enable/disable from the
     // persisted `config.*.enabled` flags later.
     const registry = new TransportRegistry(plugins);
-    registry.enable(TransportId.WS, () => new WSTransport(config.ws.port));
+    registry.enable(TransportId.WS, () => new WSTransport(wsPort(config)));
     registry.enable(TransportId.MIDI, () => new MidiTransport());
 
-    // A port change (from the Options page, #7) is now a live retarget: the ws
-    // redials the new port with its plugins intact, no tab reload. The Options
-    // page writes the whole `config` envelope, so we react to that key and
-    // retarget to the current ws port — `retarget` no-ops if it's unchanged.
+    // A `config` change is now a live retarget: the ws redials with its plugins
+    // intact, no tab reload. `wsPort` folds two live switches into one target —
+    // a plugin-port edit (Options page, #7) and the dev-bridge toggle (#6, which
+    // re-points the client at the bridge's proxy port). The Options page writes
+    // the whole `config` envelope, so we react to that key and retarget to the
+    // current effective port — `retarget` no-ops if it's unchanged.
     onChanged.addListener((changes, areaName) => {
       if (areaName === "local" && "config" in changes) {
         const next = changes.config.newValue as TransportConfig | undefined;
         if (next !== undefined) {
-          registry.retarget<number>(TransportId.WS, next.ws.port);
+          registry.retarget<number>(TransportId.WS, wsPort(next));
         }
       }
     });
