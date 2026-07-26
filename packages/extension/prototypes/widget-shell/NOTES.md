@@ -48,7 +48,10 @@ and re-injecting on every rescan — strictly more fragile and selector-drift-pr
 _(HITL — awaiting the user's pick. Fill in the chosen variant + why, then fold the
 winner into the real content-script injection path and delete the losers + switcher.)_
 
-CHOSEN: **Variant A — Floating card, bottom-right.**
+CHOSEN: **Variant A — Floating card, anchored TOP-CENTRE, folds to a pill.**
+When folded it collapses to a compact pill that sits in the **middle of Meet's top bar**;
+click the header to unfold the full card downward. (Refined from the initial bottom-right
+placement per the user.)
 
 WHY: Lowest survival risk (self-owned host on `<html>`, observer only guards against
 removal — no re-injection into Meet's own control bar like B). Compact vertical stack of

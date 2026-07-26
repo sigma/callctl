@@ -41,6 +41,10 @@
   .meet {
     position: fixed; inset: 0; display: flex; flex-direction: column;
   }
+  .meet__topbar {
+    height: 48px; display: flex; align-items: center; padding: 0 20px;
+    color: var(--text-dim); font-size: 13px; position: relative;
+  }
   .meet__stage {
     flex: 1; padding: 16px; display: grid; gap: 12px;
     grid-template-columns: 2fr 1fr; grid-template-rows: 1fr 1fr;
@@ -94,20 +98,28 @@
   .sw input:checked + .track { background: var(--on); }
   .sw input:checked + .track::after { transform: translateX(16px); }
 
-  /* ---------- VARIANT A: floating draggable card, bottom-right ---------- */
+  /* ---------- VARIANT A: floating card, TOP-CENTRE, folds into a pill ---------- */
+  /* Anchored top-centre so the folded pill sits in the middle of Meet's top bar. */
   .cardA {
-    position: fixed; right: 20px; bottom: 92px; width: 260px;
+    position: fixed; top: 8px; left: 50%; transform: translateX(-50%); width: 260px;
     background: var(--meet-surface); border: 1px solid var(--meet-border);
     border-radius: var(--radius); box-shadow: 0 8px 28px rgba(0,0,0,.5);
-    font-size: 13px; z-index: 50;
+    font-size: 13px; z-index: 50; transition: width .15s;
   }
   .cardA__head {
     display: flex; align-items: center; gap: 8px; padding: 10px 12px;
-    border-bottom: 1px solid var(--meet-border); cursor: grab;
+    border-bottom: 1px solid var(--meet-border); cursor: pointer; user-select: none;
   }
   .cardA__head b { font-weight: 500; flex: 1; }
   .cardA__grip { color: var(--text-dim); }
+  .cardA__chev { color: var(--text-dim); font-size: 11px; transition: transform .15s; }
   .cardA__body { padding: 6px 12px 12px; }
+  /* folded: shrink to a compact pill, just the header, no bottom border */
+  .cardA.folded { width: auto; }
+  .cardA.folded .cardA__head { border-bottom: none; border-radius: var(--radius); padding: 8px 14px; }
+  .cardA.folded .cardA__grip { display: none; }
+  .cardA.folded .cardA__chev { transform: rotate(-90deg); }
+  .cardA.folded .cardA__body { display: none; }
   .rowA {
     display: flex; align-items: center; gap: 10px; padding: 9px 0;
     border-bottom: 1px solid rgba(255,255,255,.05);
@@ -204,6 +216,10 @@
 
   <!-- ===================== faux-Meet backdrop ===================== -->
   <div class="meet" aria-hidden="true">
+    <div class="meet__topbar">
+      <span class="meet__mtg">Team standup</span>
+      <!-- Variant A anchors here — centred in this top bar when folded -->
+    </div>
     <div class="meet__stage">
       <div class="tile big"><div class="tile__avatar">🧑</div><div class="tile__name">You</div></div>
       <div class="tile"><div class="tile__avatar">👩</div><div class="tile__name">Priya</div></div>
@@ -222,11 +238,12 @@
   </div>
 
   <!-- ===================== VARIANT A: floating card ===================== -->
-  <div class="cardA" data-widget="A">
-    <div class="cardA__head">
-      <span class="cardA__grip">⠿</span>
+  <div class="cardA" data-widget="A" id="cardA">
+    <div class="cardA__head" id="cardAhead" title="Click to fold / unfold">
+      <span class="cardA__grip">🎛️</span>
       <b>Transports</b>
       <span class="badge">2 live</span>
+      <span class="cardA__chev">▾</span>
     </div>
     <div class="cardA__body">
       <div class="rowA">
@@ -312,14 +329,14 @@
   <!-- ===================== prototype switcher ===================== -->
   <div class="switcher">
     <button id="prev" title="Previous (←)">‹</button>
-    <div class="label"><b id="vkey">A</b> — <span id="vname">Floating card (bottom-right)</span></div>
+    <div class="label"><b id="vkey">A</b> — <span id="vname">Floating card (top-centre, folds to pill)</span></div>
     <button id="next" title="Next (→)">›</button>
     <span class="hint">← →</span>
   </div>
 
 <script>
   const VARIANTS = [
-    ["A", "Floating card (bottom-right)"],
+    ["A", "Floating card (top-centre, folds to pill)"],
     ["B", "Native bar button + popover"],
     ["C", "Edge-docked rail (right)"],
   ];
@@ -336,6 +353,11 @@
     history.replaceState(null, "", "?" + p.toString());
   }
   function cycle(d) { idx = (idx + d + VARIANTS.length) % VARIANTS.length; render(); }
+
+  // Variant A: click header to fold into a pill (centred in the top bar) / unfold
+  document.getElementById("cardAhead").addEventListener("click", () => {
+    document.getElementById("cardA").classList.toggle("folded");
+  });
 
   document.getElementById("prev").onclick = () => cycle(-1);
   document.getElementById("next").onclick = () => cycle(1);
