@@ -125,13 +125,13 @@ describe("MeetRemote", () => {
 
     remote.toggleMic();
     remote.leave();
-    remote.react("wave");
+    remote.react("yes");
 
     await eventually(() => ext.received.length >= 3);
     const byEvent = new Map(ext.received.map((m) => [m.event, m.data]));
     expect(byEvent.has(Command.ToggleMic)).toBe(true);
     expect(byEvent.has(Command.LeaveCall)).toBe(true);
-    expect(byEvent.get(Command.React)).toBe(reactionLabel("wave"));
+    expect(byEvent.get(Command.React)).toBe(reactionLabel("yes"));
   });
 
   it("drops the previous connection when a new extension dials in", async () => {

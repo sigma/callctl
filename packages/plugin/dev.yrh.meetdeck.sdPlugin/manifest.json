@@ -147,14 +147,14 @@
 			]
 		},
 		{
-			"Name": "React wave",
-			"UUID": "dev.yrh.meetdeck.react-wave",
-			"Icon": "imgs/actions/react_wave",
-			"Tooltip": "React wave",
+			"Name": "React love",
+			"UUID": "dev.yrh.meetdeck.react-love",
+			"Icon": "imgs/actions/react_love",
+			"Tooltip": "React love",
 			"SupportedInMultiActions": true,
 			"States": [
 				{
-					"Image": "imgs/actions/react_wave",
+					"Image": "imgs/actions/react_love",
 					"TitleAlignment": "middle"
 				}
 			]
@@ -173,14 +173,14 @@
 			]
 		},
 		{
-			"Name": "React no",
-			"UUID": "dev.yrh.meetdeck.react-no",
-			"Icon": "imgs/actions/react_no",
-			"Tooltip": "React no",
+			"Name": "React party",
+			"UUID": "dev.yrh.meetdeck.react-party",
+			"Icon": "imgs/actions/react_party",
+			"Tooltip": "React party",
 			"SupportedInMultiActions": true,
 			"States": [
 				{
-					"Image": "imgs/actions/react_no",
+					"Image": "imgs/actions/react_party",
 					"TitleAlignment": "middle"
 				}
 			]
@@ -199,19 +199,6 @@
 			]
 		},
 		{
-			"Name": "React love",
-			"UUID": "dev.yrh.meetdeck.react-love",
-			"Icon": "imgs/actions/react_love",
-			"Tooltip": "React love",
-			"SupportedInMultiActions": true,
-			"States": [
-				{
-					"Image": "imgs/actions/react_love",
-					"TitleAlignment": "middle"
-				}
-			]
-		},
-		{
 			"Name": "React laugh",
 			"UUID": "dev.yrh.meetdeck.react-laugh",
 			"Icon": "imgs/actions/react_laugh",
@@ -225,79 +212,53 @@
 			]
 		},
 		{
-			"Name": "React plus",
-			"UUID": "dev.yrh.meetdeck.react-plus",
-			"Icon": "imgs/actions/react_plus",
-			"Tooltip": "React plus",
+			"Name": "React surprise",
+			"UUID": "dev.yrh.meetdeck.react-surprise",
+			"Icon": "imgs/actions/react_surprise",
+			"Tooltip": "React surprise",
 			"SupportedInMultiActions": true,
 			"States": [
 				{
-					"Image": "imgs/actions/react_plus",
+					"Image": "imgs/actions/react_surprise",
 					"TitleAlignment": "middle"
 				}
 			]
 		},
 		{
-			"Name": "React party",
-			"UUID": "dev.yrh.meetdeck.react-party",
-			"Icon": "imgs/actions/react_party",
-			"Tooltip": "React party",
+			"Name": "React cry",
+			"UUID": "dev.yrh.meetdeck.react-cry",
+			"Icon": "imgs/actions/react_cry",
+			"Tooltip": "React cry",
 			"SupportedInMultiActions": true,
 			"States": [
 				{
-					"Image": "imgs/actions/react_party",
+					"Image": "imgs/actions/react_cry",
 					"TitleAlignment": "middle"
 				}
 			]
 		},
 		{
-			"Name": "React rainbow",
-			"UUID": "dev.yrh.meetdeck.react-rainbow",
-			"Icon": "imgs/actions/react_rainbow",
-			"Tooltip": "React rainbow",
+			"Name": "React think",
+			"UUID": "dev.yrh.meetdeck.react-think",
+			"Icon": "imgs/actions/react_think",
+			"Tooltip": "React think",
 			"SupportedInMultiActions": true,
 			"States": [
 				{
-					"Image": "imgs/actions/react_rainbow",
+					"Image": "imgs/actions/react_think",
 					"TitleAlignment": "middle"
 				}
 			]
 		},
 		{
-			"Name": "React crab",
-			"UUID": "dev.yrh.meetdeck.react-crab",
-			"Icon": "imgs/actions/react_crab",
-			"Tooltip": "React crab",
+			"Name": "React no",
+			"UUID": "dev.yrh.meetdeck.react-no",
+			"Icon": "imgs/actions/react_no",
+			"Tooltip": "React no",
 			"SupportedInMultiActions": true,
 			"States": [
 				{
-					"Image": "imgs/actions/react_crab",
-					"TitleAlignment": "middle"
-				}
-			]
-		},
-		{
-			"Name": "React blown",
-			"UUID": "dev.yrh.meetdeck.react-blown",
-			"Icon": "imgs/actions/react_blown",
-			"Tooltip": "React blown",
-			"SupportedInMultiActions": true,
-			"States": [
-				{
-					"Image": "imgs/actions/react_blown",
-					"TitleAlignment": "middle"
-				}
-			]
-		},
-		{
-			"Name": "React 100",
-			"UUID": "dev.yrh.meetdeck.react-100",
-			"Icon": "imgs/actions/react_100",
-			"Tooltip": "React 100",
-			"SupportedInMultiActions": true,
-			"States": [
-				{
-					"Image": "imgs/actions/react_100",
+					"Image": "imgs/actions/react_no",
 					"TitleAlignment": "middle"
 				}
 			]
