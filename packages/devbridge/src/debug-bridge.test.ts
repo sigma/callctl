@@ -164,4 +164,55 @@ describe("DebugBridge", () => {
     await waitFor(() => bridge.state.mic === "muted");
     expect(leaked).toBe(false);
   });
+
+  test("getSelectors requests and resolves the config the extension pushes", async () => {
+    const { bridge, ext } = await setup();
+    ext.on("message", (raw) => {
+      const m = JSON.parse(raw.toString()) as Message;
+      if (m.event === "getSelectors") {
+        ext.send(JSON.stringify(message("selectors", JSON.stringify({ leave: "Leave call" }))));
+      }
+    });
+    await expect(bridge.getSelectors()).resolves.toEqual({ leave: "Leave call" });
+  });
+
+  test("setSelectors sends the partial and resolves the merged config back", async () => {
+    const { bridge, ext } = await setup();
+    const seen = new Promise<Message>((r) => {
+      ext.on("message", (raw) => {
+        const m = JSON.parse(raw.toString()) as Message;
+        if (m.event === "setSelectors") {
+          r(m);
+          ext.send(JSON.stringify(message("selectors", JSON.stringify({ handRaise: "Up" }))));
+        }
+      });
+    });
+    const result = await bridge.setSelectors({ handRaise: "Up" });
+    expect(JSON.parse((await seen).data ?? "{}")).toEqual({ handRaise: "Up" });
+    expect(result).toEqual({ handRaise: "Up" });
+  });
+
+  test("does NOT forward selector pushes upstream to the plugin", async () => {
+    const pluginServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+    cleanups.push(() => pluginServer.close());
+    const pluginConn = new Promise<WebSocket>((r) => pluginServer.once("connection", r));
+    await new Promise<void>((r) => pluginServer.once("listening", () => r()));
+    const pluginPort = (pluginServer.address() as AddressInfo).port;
+
+    const { bridge, ext } = await setup({ pluginPort });
+    const plugin = await pluginConn;
+    await waitFor(() => bridge.state.pluginConnected);
+
+    let leaked = false;
+    plugin.on("message", (raw) => {
+      if ((JSON.parse(raw.toString()) as Message).event === "selectors") {
+        leaked = true;
+      }
+    });
+
+    ext.send(JSON.stringify(message("selectors", JSON.stringify({ leave: "x" }))));
+    ext.send(JSON.stringify(message("micState", "muted")));
+    await waitFor(() => bridge.state.mic === "muted");
+    expect(leaked).toBe(false);
+  });
 });

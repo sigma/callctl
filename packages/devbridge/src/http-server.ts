@@ -12,6 +12,8 @@ import type { DebugBridge } from "./debug-bridge.js";
  *   GET  /click?selector=<css>     click the first match
  *   GET  /command?event=<e>&data=<d>   inject a raw command at the extension
  *   POST /command  { "event": "...", "data": "..." }
+ *   GET  /selectors                    read the extension's live selector config
+ *   POST /selectors  { "handRaise": "...", ... }   push a partial override
  */
 export function startHttp(bridge: DebugBridge, port: number, host = "127.0.0.1"): Promise<Server> {
   const server = createServer((req, res) => {
@@ -64,6 +66,15 @@ async function handle(
     }
     bridge.sendCommand(event, data);
     return sendJson(res, 200, { ok: true, sent: { event, data } });
+  }
+
+  if (path === "/selectors") {
+    if (req.method === "POST") {
+      const body = await readBody(req);
+      const partial = body === "" ? {} : (JSON.parse(body) as Record<string, unknown>);
+      return sendJson(res, 200, { ok: true, selectors: await bridge.setSelectors(partial) });
+    }
+    return sendJson(res, 200, { ok: true, selectors: await bridge.getSelectors() });
   }
 
   return sendJson(res, 404, { ok: false, error: `no route for ${path}` });

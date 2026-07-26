@@ -113,6 +113,42 @@ async function main(): Promise<void> {
     },
   );
 
+  server.registerTool(
+    "meet_get_selectors",
+    {
+      description:
+        "Read the extension's live Meet selector config (the match strings each control is found by). Use this to see what a control is currently matched on before overriding it.",
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        return jsonResult(await bridge.getSelectors());
+      } catch (e) {
+        return errorResult(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    "meet_set_selectors",
+    {
+      description:
+        "Fix Meet selector drift at runtime WITHOUT a rebuild or tab reload (which would drop the call). Push a partial override map keyed by selector name (mic, camera, leave, participants, chat, handRaise, handLower, reactionOpener); the value is the new accessible-name substring. Returns the merged config. The override persists in the extension across reloads.",
+      inputSchema: {
+        overrides: z
+          .record(z.string(), z.string())
+          .describe('selector-key → new match substring, e.g. { "handRaise": "Raise hand" }'),
+      },
+    },
+    async ({ overrides }) => {
+      try {
+        return jsonResult(await bridge.setSelectors(overrides));
+      } catch (e) {
+        return errorResult(e);
+      }
+    },
+  );
+
   await server.connect(new StdioServerTransport());
   log(`MCP server ready; bridge on :${cfg.extensionPort}`);
 }

@@ -1,5 +1,6 @@
 import type { AddressInfo } from "node:net";
 import {
+  Command,
   DebugCommand,
   type DebugControl,
   DebugEvent,
@@ -8,6 +9,7 @@ import {
   type DebugResponse,
   type Message,
   message,
+  type SelectorConfig,
   StateEvent,
   StateValue,
 } from "@meetdeck/protocol";
@@ -70,6 +72,9 @@ export class DebugBridge {
   #camera: BridgeState["camera"] = "unknown";
   #hand: BridgeState["hand"] = "unknown";
 
+  /** Waiters for the next `selectors` push (get/set-selectors replies). */
+  readonly #selectorWaiters = new Set<(c: SelectorConfig) => void>();
+
   constructor(opts: BridgeOptions) {
     this.#opts = {
       host: "127.0.0.1",
@@ -110,6 +115,7 @@ export class DebugBridge {
       p.reject(new Error("bridge closing"));
     }
     this.#pending.clear();
+    this.#selectorWaiters.clear();
     this.#ext?.close();
     this.#plugin?.close();
     this.#wss?.close();
@@ -168,6 +174,13 @@ export class DebugBridge {
       return;
     }
 
+    // Intercept selector config pushes — resolve get/set waiters. Don't forward:
+    // the @meetdeck/plugin Stream Deck side doesn't consume `selectors` pushes.
+    if (m.event === StateEvent.Selectors) {
+      this.#resolveSelectors(m.data);
+      return;
+    }
+
     this.#cacheState(m);
     // Everything else (state pushes) goes up to the plugin, if proxying.
     this.#toPlugin(raw);
@@ -223,6 +236,49 @@ export class DebugBridge {
       throw new Error("no extension connected");
     }
     this.#ext.send(JSON.stringify(message(event, data)));
+  }
+
+  /** Read the extension's live selector config (fires `getSelectors`). */
+  getSelectors(): Promise<SelectorConfig> {
+    return this.#requestSelectors(Command.GetSelectors);
+  }
+
+  /** Push a partial selector override and await the merged config back. */
+  setSelectors(partial: Record<string, unknown>): Promise<SelectorConfig> {
+    return this.#requestSelectors(Command.SetSelectors, JSON.stringify(partial));
+  }
+
+  #requestSelectors(event: string, data?: string): Promise<SelectorConfig> {
+    if (this.#ext === null) {
+      return Promise.reject(new Error("no extension connected"));
+    }
+    return new Promise<SelectorConfig>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.#selectorWaiters.delete(waiter);
+        reject(new Error(`${event} timed out after ${this.#opts.debugTimeoutMs}ms`));
+      }, this.#opts.debugTimeoutMs);
+      const waiter = (config: SelectorConfig) => {
+        clearTimeout(timer);
+        resolve(config);
+      };
+      this.#selectorWaiters.add(waiter);
+      (this.#ext as WebSocket).send(JSON.stringify(message(event, data)));
+    });
+  }
+
+  #resolveSelectors(data: string | undefined): void {
+    let config: SelectorConfig;
+    try {
+      config = JSON.parse(data ?? "{}") as SelectorConfig;
+    } catch {
+      this.#log(`ignoring malformed selectors push: ${data}`);
+      return;
+    }
+    const waiters = [...this.#selectorWaiters];
+    this.#selectorWaiters.clear();
+    for (const w of waiters) {
+      w(config);
+    }
   }
 
   /** Run a debug op against the live Meet DOM and await the extension's reply. */
