@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "meetdeck-devbridge": {
+      "command": "node",
+      "args": ["packages/devbridge/dist/mcp-server.js"],
+      "env": {
+        "MEETDECK_EXTENSION_PORT": "2395"
+      }
+    }
+  }
+}

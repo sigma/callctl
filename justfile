@@ -58,6 +58,29 @@ build-extension:
 load-extension:
     @echo "Load unpacked extension from: {{justfile_directory()}}/packages/extension/dist"
 
+# --- Dev bridge (Meet DOM debugging) -----------------------------------------
+# The bridge exposes the live Meet DOM for introspection/clicking. Its DebugPlugin
+# ships only in non-production extension builds (`dev-extension` or the debug
+# build), so build the extension in dev/debug mode when using the bridge.
+
+# Build the dev bridge (required before MCP use via .mcp.json)
+build-devbridge:
+    pnpm -F @meetdeck/devbridge build
+
+# Debug-only bridge + HTTP API on :2395/:2397 (extension unchanged; Stream Deck
+# plugin must NOT be running, since both want :2395). Try: curl localhost:2397/dump?q=hand
+dev-bridge:
+    pnpm -F @meetdeck/devbridge start
+
+# Transparent proxy: bridge on :2396 in front of the plugin on :2395, so Stream
+# Deck keeps working while you debug. Point the extension's options port at 2396.
+dev-bridge-proxy:
+    pnpm -F @meetdeck/devbridge start --extension-port 2396 --plugin-port 2395
+
+# Loadable non-HMR extension build WITH the DebugPlugin (load dist/ unpacked)
+build-extension-debug:
+    pnpm -F @meetdeck/extension exec vite build --mode debug
+
 # --- Quality -----------------------------------------------------------------
 
 # Run all unit tests (vitest)
