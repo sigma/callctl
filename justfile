@@ -29,8 +29,10 @@ dev-plugin:
     pnpm -F @callctl/plugin dev
 
 # Link the plugin into Stream Deck (one-time setup)
+# `run` is required: bare `pnpm -F <pkg> link` hits pnpm's built-in `link`
+# command instead of the package's `link` script.
 link:
-    pnpm -F @callctl/plugin link
+    pnpm -F @callctl/plugin run link
 
 # Validate the plugin manifest + bundle
 validate:
