@@ -12,6 +12,7 @@
  */
 
 import { SelectorKey } from "@callctl/protocol";
+import type { Disposer } from "../disposer.js";
 import { type SelectorRegistry, selectors } from "./selectors.js";
 
 /** An `HTMLElement` with the ARIA reflection properties Meet sets. */
@@ -69,12 +70,12 @@ export interface Model {
   /**
    * Subscribe to mute-state transitions. This is an *additive* subscription, not
    * a single settable callback: the plugin's `installHooks` is invoked once per
-   * transport (WS + MIDI) by `MultiProtocol`, and each needs to push
+   * transport (WS + MIDI) by the `TransportRegistry`, and each needs to push
    * independently. A single overwritable field let the last (MIDI, whose `send`
    * is a no-op) clobber the websocket's push, so state changes never reached the
    * plugin — the toggle LEDs went stale.
    */
-  onMuteStateChange: (listener: (dev: InputDevice) => void) => void;
+  onMuteStateChange: (listener: (dev: InputDevice) => void) => Disposer;
 
   getMuteElement: (inputDevice: InputDevice) => UIElement | undefined;
   getElement: (label: string) => UIElement | undefined;
@@ -91,8 +92,9 @@ export class HTMLModel implements Model {
   readonly #lastMuted = new Map<InputDevice, boolean>();
   #rescanQueued = false;
 
-  onMuteStateChange(listener: (dev: InputDevice) => void): void {
+  onMuteStateChange(listener: (dev: InputDevice) => void): Disposer {
     this.#muteListeners.add(listener);
+    return () => this.#muteListeners.delete(listener);
   }
 
   constructor(doc: Document = document, registry: SelectorRegistry = selectors) {

@@ -5,7 +5,7 @@ import type { Transport } from "../transport/transport.js";
  * Faithful port of the legacy `Plugin` interface (renamed to `MeetPlugin` to
  * avoid confusion with the Stream Deck "plugin").
  *
- * `ID()` doubles as the MIDI CC selector (see {@link MidiProtocol}); keep the
+ * `ID()` doubles as the MIDI CC selector (see {@link MidiTransport}); keep the
  * numeric ids stable and distinct across plugins.
  */
 export interface MeetPlugin {

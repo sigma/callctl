@@ -35,7 +35,8 @@ function fakeTransport() {
       onConnect: () => {},
       send: (m: Message) => sent.push(m),
       handle: (op: string, h: (m: Message) => void) => handlers.set(op, h),
-      shutdown: () => {},
+      onDetach: () => {},
+      detach: () => {},
       acceptPlugin: () => {},
     },
   };

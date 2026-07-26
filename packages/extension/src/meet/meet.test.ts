@@ -174,4 +174,18 @@ describe("mute-state push-back", () => {
 
     expect(seen).toEqual([InputDevice.MIC]);
   });
+
+  test("the returned disposer removes just that listener (no leak on detach)", async () => {
+    const mic = control("Turn off microphone", { muted: false });
+    const model = new HTMLModel();
+
+    const seen: InputDevice[] = [];
+    const dispose = model.onMuteStateChange((dev) => seen.push(dev));
+
+    dispose(); // as a disabled transport's detach would
+    mic.setAttribute("data-is-muted", "true");
+    await flush();
+
+    expect(seen).toEqual([]); // the unsubscribed listener never fires
+  });
 });

@@ -1,4 +1,5 @@
 import { Command, message, SelectorKey, StateEvent, StateValue } from "@callctl/protocol";
+import type { Disposer } from "../disposer.js";
 import { ControlsNotFoundError, HTMLModel, type UIElement } from "../meet/model.js";
 import { type SelectorRegistry, selectors } from "../meet/selectors.js";
 import type { Transport } from "../transport/transport.js";
@@ -15,9 +16,10 @@ export interface HandModel {
    * Subscribe to hand raise/lower transitions. Additive (not a settable field)
    * for the same reason as {@link Model.onMuteStateChange}: `installHooks` runs
    * once per transport, and a single field let the no-op MIDI transport clobber
-   * the websocket's push.
+   * the websocket's push. Returns a {@link Disposer} that removes just this
+   * listener, so disabling a transport tears its pusher back out of the model.
    */
-  onHandStateChange: (listener: () => void) => void;
+  onHandStateChange: (listener: () => void) => Disposer;
   getHandState: () => boolean;
   getElement: (label: string) => UIElement | undefined;
 }
@@ -48,8 +50,9 @@ class HTMLHandModel implements HandModel {
     });
   }
 
-  onHandStateChange(listener: () => void): void {
+  onHandStateChange(listener: () => void): Disposer {
     this.#handListeners.add(listener);
+    return () => this.#handListeners.delete(listener);
   }
 
   #scheduleRescan(): void {
@@ -170,7 +173,9 @@ class HandPlugin implements MeetPlugin {
 
   installHooks(t: Transport): void {
     const state = this.#state;
-    this.#model.onHandStateChange(() => state.sendHandState(t));
+    // Park the unsubscribe on the transport, so detaching it removes this
+    // hand-state pusher from the model rather than leaking it.
+    t.onDetach(this.#model.onHandStateChange(() => state.sendHandState(t)));
   }
 
   installHandlers(t: Transport): void {

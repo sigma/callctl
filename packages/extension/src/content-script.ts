@@ -1,10 +1,10 @@
-import { DEFAULT_PORT, type SelectorConfig } from "@callctl/protocol";
-import { App } from "./app.js";
+import type { SelectorConfig } from "@callctl/protocol";
+import { loadConfig, type TransportConfig } from "./config.js";
 import { selectors } from "./meet/selectors.js";
 import { loadPlugins } from "./plugins/index.js";
-import { MidiProtocol } from "./transport/midi-protocol.js";
-import { MultiProtocol } from "./transport/multi-protocol.js";
-import { WSProtocol } from "./transport/ws-protocol.js";
+import { MidiTransport } from "./transport/midi-transport.js";
+import { TransportId, TransportRegistry } from "./transport/transport-registry.js";
+import { WSTransport } from "./transport/ws-transport.js";
 
 /**
  * The extension's beating heart. Contrary to a common misreading of this
@@ -19,29 +19,40 @@ function init(
   local: chrome.storage.LocalStorageArea,
   onChanged: typeof chrome.storage.onChanged,
 ): void {
-  local.get<{ port: number; selectors: Partial<SelectorConfig> }>(
-    { port: DEFAULT_PORT, selectors: {} },
-    (result) => {
-      // Overlay any selector overrides fixed in a previous session (or pushed
-      // over the wire and persisted) before the plugins' models start reading.
-      selectors.apply(result.selectors ?? {});
-      const plugins = loadPlugins({
-        persistSelectors: (config) => local.set({ selectors: config }),
-      });
+  local.get<{ selectors: Partial<SelectorConfig> }>({ selectors: {} }, async (result) => {
+    // Overlay any selector overrides fixed in a previous session (or pushed
+    // over the wire and persisted) before the plugins' models start reading.
+    selectors.apply(result.selectors ?? {});
+    const plugins = loadPlugins({
+      persistSelectors: (config) => local.set({ selectors: config }),
+    });
 
-      const transport = new MultiProtocol([new WSProtocol(result.port), new MidiProtocol()]);
+    // The port (and, later, enable-flags) live in the versioned `config`
+    // envelope owned by `config.ts` (#7); `loadConfig` also migrates a legacy
+    // `{ port }` install on first read.
+    const config = await loadConfig(local);
 
-      // Changing the port tears the bridge down; the user reloads the Meet tab
-      // to pick up the new value. (Same limitation as the legacy extension.)
-      onChanged.addListener((changes, areaName) => {
-        if (areaName === "local" && "port" in changes) {
-          transport.shutdown();
+    // The registry owns the fan-out (replacing the static `MultiProtocol`) and
+    // each transport's lifecycle. Enable WS + MIDI up front to preserve today's
+    // always-on behavior; the widget (#4) will drive enable/disable from the
+    // persisted `config.*.enabled` flags later.
+    const registry = new TransportRegistry(plugins);
+    registry.enable(TransportId.WS, () => new WSTransport(config.ws.port));
+    registry.enable(TransportId.MIDI, () => new MidiTransport());
+
+    // A port change (from the Options page, #7) is now a live retarget: the ws
+    // redials the new port with its plugins intact, no tab reload. The Options
+    // page writes the whole `config` envelope, so we react to that key and
+    // retarget to the current ws port — `retarget` no-ops if it's unchanged.
+    onChanged.addListener((changes, areaName) => {
+      if (areaName === "local" && "config" in changes) {
+        const next = changes.config.newValue as TransportConfig | undefined;
+        if (next !== undefined) {
+          registry.retarget<number>(TransportId.WS, next.ws.port);
         }
-      });
-
-      new App(transport).run(plugins);
-    },
-  );
+      }
+    });
+  });
 }
 
 function ready(doc: Document, callback: () => void): void {

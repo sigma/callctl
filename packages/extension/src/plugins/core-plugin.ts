@@ -28,8 +28,10 @@ class CorePlugin implements MeetPlugin {
     t.onConnect = () => {
       state.transmit(t);
     };
-    // And push again whenever Meet's mute state changes under us.
-    this.#model.onMuteStateChange((dev) => state.sendMuteState(t, dev));
+    // And push again whenever Meet's mute state changes under us. Park the
+    // unsubscribe on the transport so disabling it tears this pusher back out of
+    // the model (else a disabled transport keeps a dead listener wired in).
+    t.onDetach(this.#model.onMuteStateChange((dev) => state.sendMuteState(t, dev)));
   }
 
   installHandlers(t: Transport): void {

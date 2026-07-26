@@ -13,7 +13,7 @@ import { DebugBridge } from "./debug-bridge.js";
 /**
  * These tests drive the bridge over real `ws` sockets — a fake extension dials
  * in, and (for the proxy tests) a fake plugin listens upstream. They are the
- * mirror image of the extension's `ws-protocol.test.ts`.
+ * mirror image of the extension's `ws-transport.test.ts`.
  */
 
 const cleanups: Array<() => void> = [];
