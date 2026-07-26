@@ -27,6 +27,10 @@ export const Command = {
   GetHandState: "getHandState",
   // react add-on (was gated behind `!public` in Go)
   React: "react",
+  // config-over-the-wire selectors (see selectors.ts); currently driven by the
+  // dev bridge — the @meetdeck/plugin Stream Deck side doesn't emit these yet
+  SetSelectors: "setSelectors",
+  GetSelectors: "getSelectors",
 } as const;
 export type Command = (typeof Command)[keyof typeof Command];
 
@@ -35,6 +39,8 @@ export const StateEvent = {
   CameraState: "cameraState",
   MicState: "micState",
   HandState: "handState",
+  /** Full {@link SelectorConfig} JSON, pushed after get/set-selectors. */
+  Selectors: "selectors",
 } as const;
 export type StateEvent = (typeof StateEvent)[keyof typeof StateEvent];
 
