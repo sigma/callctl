@@ -1,5 +1,6 @@
-import { DEFAULT_PORT } from "@meetdeck/protocol";
+import { DEFAULT_PORT, type SelectorConfig } from "@meetdeck/protocol";
 import { App } from "./app.js";
+import { selectors } from "./meet/selectors.js";
 import { loadPlugins } from "./plugins/index.js";
 import { MidiProtocol } from "./transport/midi-protocol.js";
 import { MultiProtocol } from "./transport/multi-protocol.js";
@@ -18,21 +19,29 @@ function init(
   local: chrome.storage.LocalStorageArea,
   onChanged: typeof chrome.storage.onChanged,
 ): void {
-  const plugins = loadPlugins();
+  local.get<{ port: number; selectors: Partial<SelectorConfig> }>(
+    { port: DEFAULT_PORT, selectors: {} },
+    (result) => {
+      // Overlay any selector overrides fixed in a previous session (or pushed
+      // over the wire and persisted) before the plugins' models start reading.
+      selectors.apply(result.selectors ?? {});
+      const plugins = loadPlugins({
+        persistSelectors: (config) => local.set({ selectors: config }),
+      });
 
-  local.get<{ port: number }>({ port: DEFAULT_PORT }, (result) => {
-    const transport = new MultiProtocol([new WSProtocol(result.port), new MidiProtocol()]);
+      const transport = new MultiProtocol([new WSProtocol(result.port), new MidiProtocol()]);
 
-    // Changing the port tears the bridge down; the user reloads the Meet tab to
-    // pick up the new value. (Same limitation as the legacy extension.)
-    onChanged.addListener((changes, areaName) => {
-      if (areaName === "local" && "port" in changes) {
-        transport.shutdown();
-      }
-    });
+      // Changing the port tears the bridge down; the user reloads the Meet tab
+      // to pick up the new value. (Same limitation as the legacy extension.)
+      onChanged.addListener((changes, areaName) => {
+        if (areaName === "local" && "port" in changes) {
+          transport.shutdown();
+        }
+      });
 
-    new App(transport).run(plugins);
-  });
+      new App(transport).run(plugins);
+    },
+  );
 }
 
 function ready(doc: Document, callback: () => void): void {

@@ -1,5 +1,6 @@
-import { Command, message, StateEvent, StateValue } from "@meetdeck/protocol";
+import { Command, message, SelectorKey, StateEvent, StateValue } from "@meetdeck/protocol";
 import { ControlsNotFoundError, HTMLModel, type UIElement } from "../meet/model.js";
+import { type SelectorRegistry, selectors } from "../meet/selectors.js";
 import type { Transport } from "../transport/transport.js";
 import type { MeetPlugin } from "./plugin.js";
 
@@ -23,12 +24,14 @@ export interface HandModel {
 
 class HTMLHandModel implements HandModel {
   readonly #model: HTMLModel;
+  readonly #selectors: SelectorRegistry;
   readonly #handListeners = new Set<() => void>();
   #lastLowered: boolean | undefined;
   #rescanQueued = false;
 
-  constructor(model: HTMLModel, doc: Document = document) {
+  constructor(model: HTMLModel, doc: Document = document, registry: SelectorRegistry = selectors) {
     this.#model = model;
+    this.#selectors = registry;
 
     // Same shape as HTMLModel's mute observer: watch broadly (childList +
     // aria-label) from documentElement and re-derive the hand state, since Meet
@@ -61,8 +64,8 @@ class HTMLHandModel implements HandModel {
   }
 
   #rescan(): void {
-    const raise = this.#model.getElement("Raise hand") !== undefined;
-    const lower = this.#model.getElement("Lower hand") !== undefined;
+    const raise = this.#model.getElement(this.#selectors.get(SelectorKey.HandRaise)) !== undefined;
+    const lower = this.#model.getElement(this.#selectors.get(SelectorKey.HandLower)) !== undefined;
     if (!raise && !lower) {
       return; // the toolbar hand button isn't present right now — don't guess
     }
@@ -82,7 +85,7 @@ class HTMLHandModel implements HandModel {
    * the substring "Lower hand", so they don't confuse this.)
    */
   getHandState(): boolean {
-    return this.#model.getElement("Lower hand") === undefined;
+    return this.#model.getElement(this.#selectors.get(SelectorKey.HandLower)) === undefined;
   }
 
   getElement(label: string): UIElement | undefined {
@@ -127,22 +130,25 @@ interface HandAPI {
 
 export class ModeledHandAPI implements HandAPI {
   readonly #model: HandModel;
+  readonly #selectors: SelectorRegistry;
 
-  constructor(m: HandModel) {
+  constructor(m: HandModel, registry: SelectorRegistry = selectors) {
     this.#model = m;
+    this.#selectors = registry;
   }
 
   raiseHand(): void {
-    this.#model.getElement("Raise hand")?.click();
+    this.#model.getElement(this.#selectors.get(SelectorKey.HandRaise))?.click();
   }
 
   lowerHand(): void {
-    this.#model.getElement("Lower hand")?.click();
+    this.#model.getElement(this.#selectors.get(SelectorKey.HandLower))?.click();
   }
 
   toggleHand(): void {
-    const raise = this.#model.getElement("Raise hand");
-    const button = raise != null ? raise : this.#model.getElement("Lower hand");
+    const raise = this.#model.getElement(this.#selectors.get(SelectorKey.HandRaise));
+    const button =
+      raise != null ? raise : this.#model.getElement(this.#selectors.get(SelectorKey.HandLower));
     button?.click();
   }
 }

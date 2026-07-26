@@ -3,6 +3,7 @@ import { newDebugPlugin } from "./debug-plugin.js";
 import { newHandPlugin } from "./hand-plugin.js";
 import type { MeetPlugin } from "./plugin.js";
 import { newReactPlugin } from "./react-plugin.js";
+import { newSelectorsPlugin, type PersistSelectors } from "./selectors-plugin.js";
 
 /**
  * The plugin registry — an explicit list replacing the legacy webpack
@@ -15,8 +16,13 @@ import { newReactPlugin } from "./react-plugin.js";
  * shakes both the branch and the import away — a shipped extension carries no
  * debug surface. `vite` dev and `vite build --mode debug` keep it.
  */
-export function loadPlugins(): MeetPlugin[] {
-  const plugins = [newCorePlugin(), newHandPlugin(), newReactPlugin()];
+export function loadPlugins(opts: { persistSelectors?: PersistSelectors } = {}): MeetPlugin[] {
+  const plugins = [
+    newCorePlugin(),
+    newHandPlugin(),
+    newReactPlugin(),
+    newSelectorsPlugin(opts.persistSelectors),
+  ];
   if (import.meta.env.MODE !== "production") {
     plugins.push(newDebugPlugin());
   }

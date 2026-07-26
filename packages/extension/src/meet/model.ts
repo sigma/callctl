@@ -6,8 +6,13 @@
  * NOTE: Meet's DOM (aria-labels, `data-is-muted`, the emoji `alt` text used by
  * the react plugin) changes over time. If commands stop clicking, verify these
  * selectors against live Meet first — that is the likeliest breakage, not the
- * transport.
+ * transport. The match strings themselves are configurable at runtime via the
+ * shared {@link SelectorRegistry} (see `selectors.ts`), so a drift fix can be
+ * pushed over the wire without rebuilding this file.
  */
+
+import { SelectorKey } from "@meetdeck/protocol";
+import { type SelectorRegistry, selectors } from "./selectors.js";
 
 /** An `HTMLElement` with the ARIA reflection properties Meet sets. */
 export interface AriaElement extends HTMLElement {
@@ -46,6 +51,12 @@ export enum InputDevice {
   MIC = "microphone",
 }
 
+/** The configurable selector key that matches a given input device's button. */
+const DEVICE_SELECTOR: Record<InputDevice, SelectorKey> = {
+  [InputDevice.CAMERA]: SelectorKey.Camera,
+  [InputDevice.MIC]: SelectorKey.Mic,
+};
+
 /** Thrown when a Meet control isn't in the DOM yet (expected at startup). */
 export class ControlsNotFoundError extends Error {
   constructor(message: string) {
@@ -72,6 +83,7 @@ export interface Model {
 
 export class HTMLModel implements Model {
   readonly doc: Document;
+  readonly #selectors: SelectorRegistry;
 
   /** Mute-change subscribers (see {@link Model.onMuteStateChange}). */
   readonly #muteListeners = new Set<(dev: InputDevice) => void>();
@@ -83,8 +95,9 @@ export class HTMLModel implements Model {
     this.#muteListeners.add(listener);
   }
 
-  constructor(doc: Document = document) {
+  constructor(doc: Document = document, registry: SelectorRegistry = selectors) {
     this.doc = doc;
+    this.#selectors = registry;
 
     // Meet no longer reliably mutates `data-is-muted` in place when the mute
     // state changes — it re-renders the control as a fresh node. An
@@ -136,8 +149,9 @@ export class HTMLModel implements Model {
   }
 
   getMuteElement(inputDevice: InputDevice): UIElement {
+    const needle = this.#selectors.get(DEVICE_SELECTOR[inputDevice]);
     const objs = [...this.doc.querySelectorAll<AriaElement>("[data-is-muted]")].filter((x) =>
-      x.ariaLabel?.includes(inputDevice),
+      x.ariaLabel?.includes(needle),
     );
 
     if (objs.length > 0) {

@@ -1,6 +1,7 @@
-import { message, StateEvent, StateValue } from "@meetdeck/protocol";
+import { message, SelectorKey, StateEvent, StateValue } from "@meetdeck/protocol";
 import type { Transport } from "../transport/transport.js";
 import { ControlsNotFoundError, InputDevice, type Model } from "./model.js";
+import { type SelectorRegistry, selectors } from "./selectors.js";
 
 /**
  * The Meet-driving API layered over the {@link Model}. Faithful port of the
@@ -60,10 +61,12 @@ export interface API {
 export class ModeledAPI implements API {
   readonly #model: Model;
   readonly #state: ModeledState;
+  readonly #selectors: SelectorRegistry;
 
-  constructor(m: Model) {
+  constructor(m: Model, registry: SelectorRegistry = selectors) {
     this.#model = m;
     this.#state = new ModeledState(this.#model);
+    this.#selectors = registry;
   }
 
   state(): ModeledState {
@@ -82,16 +85,16 @@ export class ModeledAPI implements API {
   }
 
   leaveCall(): void {
-    this.#model.getElement("Leave call")?.click();
+    this.#model.getElement(this.#selectors.get(SelectorKey.Leave))?.click();
   }
 
   toggleParticipants(): void {
     // Meet renamed this control: it is now the hover-tray "People" button, whose
     // accessible name comes via aria-labelledby (see HTMLModel.#accessibleName).
-    this.#model.getElement("People")?.click();
+    this.#model.getElement(this.#selectors.get(SelectorKey.Participants))?.click();
   }
 
   toggleChat(): void {
-    this.#model.getElement("Chat with everyone")?.click();
+    this.#model.getElement(this.#selectors.get(SelectorKey.Chat))?.click();
   }
 }

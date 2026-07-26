@@ -1,4 +1,5 @@
-import { Command, REACTION_SLUGS, reactionLabel } from "@meetdeck/protocol";
+import { Command, REACTION_SLUGS, reactionLabel, SelectorKey } from "@meetdeck/protocol";
+import { type SelectorRegistry, selectors } from "../meet/selectors.js";
 import type { Transport } from "../transport/transport.js";
 import type { MeetPlugin } from "./plugin.js";
 
@@ -13,7 +14,6 @@ import type { MeetPlugin } from "./plugin.js";
  * glyph, so a numeric `data` indexes into the canonical slug order.
  */
 
-const REACTION_OPENER = "Send a reaction";
 const OPEN_WAIT_MS = 1500;
 
 /**
@@ -68,9 +68,11 @@ function waitFor(find: () => HTMLElement | null, timeoutMs: number): Promise<HTM
 
 export class ReactAPI {
   readonly #doc: Document;
+  readonly #selectors: SelectorRegistry;
 
-  constructor(doc: Document = document) {
+  constructor(doc: Document = document, registry: SelectorRegistry = selectors) {
     this.#doc = doc;
+    this.#selectors = registry;
   }
 
   async react(data: string): Promise<void> {
@@ -82,7 +84,8 @@ export class ReactAPI {
     let button = glyphButton(this.#doc, glyph);
     if (button === null) {
       // Panel is closed — open it, then wait for the glyph button to render.
-      this.#doc.querySelector<HTMLElement>(`button[aria-label="${REACTION_OPENER}"]`)?.click();
+      const opener = this.#selectors.get(SelectorKey.ReactionOpener);
+      this.#doc.querySelector<HTMLElement>(`button[aria-label="${opener}"]`)?.click();
       button = await waitFor(() => glyphButton(this.#doc, glyph), OPEN_WAIT_MS);
     }
     button?.click();
