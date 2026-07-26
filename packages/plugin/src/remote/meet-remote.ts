@@ -8,7 +8,7 @@ import {
   reactionLabel,
   StateEvent,
   StateValue,
-} from "@meetdeck/protocol";
+} from "@callctl/protocol";
 import { type WebSocket, WebSocketServer } from "ws";
 
 /**
@@ -25,7 +25,7 @@ export type StateChangeListener = () => void;
  * Faithful port of `meetremote.Remote` (Go). It owns the socket, caches the
  * mic/camera/hand state pushed by the extension, and fans changes out to
  * listeners (the Stream Deck toggle actions). All wire vocabulary comes from
- * `@meetdeck/protocol` — never hand-write event strings here.
+ * `@callctl/protocol` — never hand-write event strings here.
  *
  * Only one extension connection is kept at a time; a fresh dial-in replaces the
  * previous socket, matching the Go behaviour.

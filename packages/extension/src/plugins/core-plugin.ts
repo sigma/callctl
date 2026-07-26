@@ -1,4 +1,4 @@
-import { Command } from "@meetdeck/protocol";
+import { Command } from "@callctl/protocol";
 import { type API, ModeledAPI } from "../meet/api.js";
 import { HTMLModel, InputDevice, type Model } from "../meet/model.js";
 import type { Transport } from "../transport/transport.js";
@@ -7,7 +7,7 @@ import type { MeetPlugin } from "./plugin.js";
 /**
  * The always-on plugin: mic + camera (mute/unmute/toggle/query), leave call,
  * and the participants/chat panels. Faithful port of the legacy `CorePlugin`,
- * with command names sourced from `@meetdeck/protocol`.
+ * with command names sourced from `@callctl/protocol`.
  */
 class CorePlugin implements MeetPlugin {
   readonly #model: Model;

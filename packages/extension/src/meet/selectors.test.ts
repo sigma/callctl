@@ -1,4 +1,4 @@
-import { DEFAULT_SELECTORS, SelectorKey } from "@meetdeck/protocol";
+import { DEFAULT_SELECTORS, SelectorKey } from "@callctl/protocol";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { newSelectorsPlugin } from "../plugins/selectors-plugin.js";
 import type { Message } from "../transport/transport.js";

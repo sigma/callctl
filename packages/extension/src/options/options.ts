@@ -1,4 +1,4 @@
-import { DEFAULT_PORT } from "@meetdeck/protocol";
+import { DEFAULT_PORT } from "@callctl/protocol";
 
 /**
  * Options page: edit the local bridge port. Ported from the legacy `options.ts`

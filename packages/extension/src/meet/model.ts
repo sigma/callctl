@@ -11,7 +11,7 @@
  * pushed over the wire without rebuilding this file.
  */
 
-import { SelectorKey } from "@meetdeck/protocol";
+import { SelectorKey } from "@callctl/protocol";
 import { type SelectorRegistry, selectors } from "./selectors.js";
 
 /** An `HTMLElement` with the ARIA reflection properties Meet sets. */

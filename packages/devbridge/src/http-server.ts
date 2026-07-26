@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import type { DebugOp } from "@meetdeck/protocol";
+import type { DebugOp } from "@callctl/protocol";
 import type { DebugBridge } from "./debug-bridge.js";
 
 /**

@@ -1,5 +1,5 @@
 {
-  description = "meetdeck monorepo dev environment (firefly-engineering/toolbox)";
+  description = "callctl monorepo dev environment (firefly-engineering/toolbox)";
 
   inputs = {
     nix-pins.url = "github:firefly-engineering/nix-pins";

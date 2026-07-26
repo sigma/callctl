@@ -1,4 +1,4 @@
-import { DEFAULT_PORT, type SelectorConfig } from "@meetdeck/protocol";
+import { DEFAULT_PORT, type SelectorConfig } from "@callctl/protocol";
 import { App } from "./app.js";
 import { selectors } from "./meet/selectors.js";
 import { loadPlugins } from "./plugins/index.js";

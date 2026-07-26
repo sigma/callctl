@@ -35,7 +35,7 @@ async function main(): Promise<void> {
   });
   await bridge.start();
 
-  const server = new McpServer({ name: "meetdeck-devbridge", version: "0.0.0" });
+  const server = new McpServer({ name: "callctl-devbridge", version: "0.0.0" });
 
   server.registerTool(
     "meet_state",

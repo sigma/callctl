@@ -3,7 +3,7 @@ import {
   mergeSelectors,
   type SelectorConfig,
   type SelectorKey,
-} from "@meetdeck/protocol";
+} from "@callctl/protocol";
 
 /**
  * The extension's live view of the Meet selectors (see the protocol's

@@ -6,8 +6,8 @@ import { startHttp } from "./http-server.js";
  * Default run mode: bridge + HTTP facade. Launch instead of (or in front of)
  * the Stream Deck plugin; then curl the debug ops.
  *
- *   pnpm -F @meetdeck/devbridge start                 # debug-only on :2395
- *   pnpm -F @meetdeck/devbridge start --plugin-port 2395 --extension-port 2396
+ *   pnpm -F @callctl/devbridge start                 # debug-only on :2395
+ *   pnpm -F @callctl/devbridge start --plugin-port 2395 --extension-port 2396
  */
 async function main(): Promise<void> {
   const cfg = parseConfig();

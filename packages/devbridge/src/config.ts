@@ -1,4 +1,4 @@
-import { DEFAULT_PORT } from "@meetdeck/protocol";
+import { DEFAULT_PORT } from "@callctl/protocol";
 
 /**
  * Bridge configuration, resolved from CLI flags first, then env vars, then

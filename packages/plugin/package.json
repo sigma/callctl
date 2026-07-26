@@ -1,5 +1,5 @@
 {
-  "name": "@meetdeck/plugin",
+  "name": "@callctl/plugin",
   "version": "0.0.0",
   "description": "Stream Deck plugin for Google Meet",
   "type": "module",
@@ -7,14 +7,14 @@
     "build": "rollup -c",
     "watch": "rollup -c -w",
     "dev": "rollup -c -w",
-    "link": "streamdeck link dev.yrh.meetdeck.sdPlugin",
-    "validate": "streamdeck validate dev.yrh.meetdeck.sdPlugin",
+    "link": "streamdeck link dev.yrh.callctl.sdPlugin",
+    "validate": "streamdeck validate dev.yrh.callctl.sdPlugin",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
     "@elgato/streamdeck": "^2.1.0",
-    "@meetdeck/protocol": "workspace:*",
+    "@callctl/protocol": "workspace:*",
     "ws": "^8.18.0"
   },
   "devDependencies": {

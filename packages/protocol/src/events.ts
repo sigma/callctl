@@ -28,7 +28,7 @@ export const Command = {
   // react add-on (was gated behind `!public` in Go)
   React: "react",
   // config-over-the-wire selectors (see selectors.ts); currently driven by the
-  // dev bridge — the @meetdeck/plugin Stream Deck side doesn't emit these yet
+  // dev bridge — the @callctl/plugin Stream Deck side doesn't emit these yet
   SetSelectors: "setSelectors",
   GetSelectors: "getSelectors",
 } as const;

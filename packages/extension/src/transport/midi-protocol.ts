@@ -1,4 +1,4 @@
-import type { Message } from "@meetdeck/protocol";
+import type { Message } from "@callctl/protocol";
 import type { MeetPlugin } from "../plugins/plugin.js";
 import type { Transport } from "./transport.js";
 

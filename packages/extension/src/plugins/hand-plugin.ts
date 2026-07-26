@@ -1,4 +1,4 @@
-import { Command, message, SelectorKey, StateEvent, StateValue } from "@meetdeck/protocol";
+import { Command, message, SelectorKey, StateEvent, StateValue } from "@callctl/protocol";
 import { ControlsNotFoundError, HTMLModel, type UIElement } from "../meet/model.js";
 import { type SelectorRegistry, selectors } from "../meet/selectors.js";
 import type { Transport } from "../transport/transport.js";
@@ -7,7 +7,7 @@ import type { MeetPlugin } from "./plugin.js";
 /**
  * Raise/lower/toggle hand plus hand-state push-back. Faithful port of the
  * legacy `google_hand_plugin.ts` (was gated behind Go's `!public` build tag).
- * Wire strings come from `@meetdeck/protocol`.
+ * Wire strings come from `@callctl/protocol`.
  */
 
 export interface HandModel {

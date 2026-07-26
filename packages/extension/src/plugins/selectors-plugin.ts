@@ -1,5 +1,5 @@
-import type { SelectorConfig } from "@meetdeck/protocol";
-import { Command, message, StateEvent } from "@meetdeck/protocol";
+import type { SelectorConfig } from "@callctl/protocol";
+import { Command, message, StateEvent } from "@callctl/protocol";
 import { type SelectorRegistry, selectors } from "../meet/selectors.js";
 import type { Transport } from "../transport/transport.js";
 import type { MeetPlugin } from "./plugin.js";

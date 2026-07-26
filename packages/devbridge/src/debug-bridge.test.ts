@@ -5,7 +5,7 @@ import {
   type DebugRequest,
   type Message,
   message,
-} from "@meetdeck/protocol";
+} from "@callctl/protocol";
 import { afterEach, describe, expect, test } from "vitest";
 import { type WebSocket, WebSocketServer, WebSocket as WsClient } from "ws";
 import { DebugBridge } from "./debug-bridge.js";

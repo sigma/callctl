@@ -1,12 +1,12 @@
 {
-  "name": "meetdeck-monorepo",
+  "name": "callctl-monorepo",
   "version": "0.0.0",
   "private": true,
   "description": "Stream Deck control surface for Google Meet (plugin + extension + shared protocol)",
   "packageManager": "pnpm@11.17.0",
   "scripts": {
     "build": "pnpm -r build",
-    "dev:plugin": "pnpm -F @meetdeck/plugin dev",
-    "dev:extension": "pnpm -F @meetdeck/extension dev"
+    "dev:plugin": "pnpm -F @callctl/plugin dev",
+    "dev:extension": "pnpm -F @callctl/extension dev"
   }
 }

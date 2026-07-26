@@ -1,4 +1,4 @@
-import { message, SelectorKey, StateEvent, StateValue } from "@meetdeck/protocol";
+import { message, SelectorKey, StateEvent, StateValue } from "@callctl/protocol";
 import type { Transport } from "../transport/transport.js";
 import { ControlsNotFoundError, InputDevice, type Model } from "./model.js";
 import { type SelectorRegistry, selectors } from "./selectors.js";
@@ -6,7 +6,7 @@ import { type SelectorRegistry, selectors } from "./selectors.js";
 /**
  * The Meet-driving API layered over the {@link Model}. Faithful port of the
  * legacy `api.ts`, with the hand-written wire strings (`micState`, `muted`, …)
- * replaced by `@meetdeck/protocol` constants so the extension and plugin can
+ * replaced by `@callctl/protocol` constants so the extension and plugin can
  * never drift.
  */
 

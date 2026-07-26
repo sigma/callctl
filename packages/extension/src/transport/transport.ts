@@ -1,4 +1,4 @@
-import type { Message } from "@meetdeck/protocol";
+import type { Message } from "@callctl/protocol";
 import type { MeetPlugin } from "../plugins/plugin.js";
 
 export type { Message };
@@ -7,10 +7,10 @@ export type { Message };
  * A bidirectional link between the extension and some controller.
  *
  * This is the legacy `Protocol` interface, renamed to `Transport` so it no
- * longer collides with the shared `@meetdeck/protocol` package (which owns the
+ * longer collides with the shared `@callctl/protocol` package (which owns the
  * *wire vocabulary* — event names, reaction labels, the `Message` envelope).
  * A `Transport` is the *pipe*; the vocabulary flowing through it comes from
- * `@meetdeck/protocol`.
+ * `@callctl/protocol`.
  *
  * Concrete transports: {@link WSProtocol} (the Stream Deck bridge websocket),
  * {@link MidiProtocol} (Web MIDI input), {@link MultiProtocol} (fan-out).

@@ -1,13 +1,12 @@
+import { REACTION_SLUGS } from "@callctl/protocol";
 import type { SingletonAction } from "@elgato/streamdeck";
-
-import { REACTION_SLUGS } from "@meetdeck/protocol";
 
 import type { MeetRemote } from "../remote/meet-remote.js";
 import { SimpleAction } from "./simple-action.js";
 import { ToggleAction } from "./toggle-action.js";
 
 /** Plugin action namespace; every action UUID is `${NAMESPACE}.<key>`. */
-export const NAMESPACE = "dev.yrh.meetdeck";
+export const NAMESPACE = "dev.yrh.callctl";
 
 const uuid = (key: string) => `${NAMESPACE}.${key}`;
 /** Flat image path for a staged icon basename (see imgs/actions/). */

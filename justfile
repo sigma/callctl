@@ -1,10 +1,10 @@
-# meetdeck monorepo task runner.
+# callctl monorepo task runner.
 # Run `just` with no arguments to list all recipes.
 # Everything here wraps the pnpm / streamdeck invocations so you don't have to
 # remember them. Assumes you're in the nix devShell (direnv `use flake`).
 
-uuid := "dev.yrh.meetdeck"
-plugin_log := "packages/plugin/dev.yrh.meetdeck.sdPlugin/logs/dev.yrh.meetdeck.0.log"
+uuid := "dev.yrh.callctl"
+plugin_log := "packages/plugin/dev.yrh.callctl.sdPlugin/logs/dev.yrh.callctl.0.log"
 
 # List available recipes
 default:
@@ -26,19 +26,19 @@ clean:
 
 # Watch + hot-reload the Stream Deck plugin (rebuild + restart on save)
 dev-plugin:
-    pnpm -F @meetdeck/plugin dev
+    pnpm -F @callctl/plugin dev
 
 # Link the plugin into Stream Deck (one-time setup)
 link:
-    pnpm -F @meetdeck/plugin link
+    pnpm -F @callctl/plugin link
 
 # Validate the plugin manifest + bundle
 validate:
-    pnpm -F @meetdeck/plugin validate
+    pnpm -F @callctl/plugin validate
 
 # Restart the plugin in Stream Deck
 restart:
-    pnpm -F @meetdeck/plugin exec streamdeck restart {{uuid}}
+    pnpm -F @callctl/plugin exec streamdeck restart {{uuid}}
 
 # Tail the plugin log (survives reloads — uses tail -F)
 logs:
@@ -48,11 +48,11 @@ logs:
 
 # Watch + HMR the Chrome extension (MV3, Vite + @crxjs)
 dev-extension:
-    pnpm -F @meetdeck/extension dev
+    pnpm -F @callctl/extension dev
 
 # Build the unpacked MV3 extension into packages/extension/dist
 build-extension:
-    pnpm -F @meetdeck/extension build
+    pnpm -F @callctl/extension build
 
 # Where to point chrome://extensions "Load unpacked" (after build-extension)
 load-extension:
@@ -65,21 +65,21 @@ load-extension:
 
 # Build the dev bridge (required before MCP use via .mcp.json)
 build-devbridge:
-    pnpm -F @meetdeck/devbridge build
+    pnpm -F @callctl/devbridge build
 
 # Debug-only bridge + HTTP API on :2395/:2397 (extension unchanged; Stream Deck
 # plugin must NOT be running, since both want :2395). Try: curl localhost:2397/dump?q=hand
 dev-bridge:
-    pnpm -F @meetdeck/devbridge start
+    pnpm -F @callctl/devbridge start
 
 # Transparent proxy: bridge on :2396 in front of the plugin on :2395, so Stream
 # Deck keeps working while you debug. Point the extension's options port at 2396.
 dev-bridge-proxy:
-    pnpm -F @meetdeck/devbridge start --extension-port 2396 --plugin-port 2395
+    pnpm -F @callctl/devbridge start --extension-port 2396 --plugin-port 2395
 
 # Loadable non-HMR extension build WITH the DebugPlugin (load dist/ unpacked)
 build-extension-debug:
-    pnpm -F @meetdeck/extension exec vite build --mode debug
+    pnpm -F @callctl/extension exec vite build --mode debug
 
 # --- Quality -----------------------------------------------------------------
 

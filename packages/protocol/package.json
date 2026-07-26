@@ -1,5 +1,5 @@
 {
-  "name": "@meetdeck/protocol",
+  "name": "@callctl/protocol",
   "version": "0.0.0",
   "description": "Shared websocket protocol between the Stream Deck plugin (server) and the Chrome extension (client)",
   "type": "module",

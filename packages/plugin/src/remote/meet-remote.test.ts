@@ -5,7 +5,7 @@ import {
   reactionLabel,
   StateEvent,
   StateValue,
-} from "@meetdeck/protocol";
+} from "@callctl/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
 

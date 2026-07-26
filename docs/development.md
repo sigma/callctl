@@ -13,9 +13,9 @@ Run `just` with no args to list every recipe.
 
 | Component | Who runs it | Listens / connects | Notes |
 |---|---|---|---|
-| **Stream Deck plugin** (`@meetdeck/plugin`) | the **Stream Deck app** (auto-launches the installed `.sdPlugin`) | **ws server on `:2395`** (the Meet bridge port) | Runs whenever the app is running + the plugin is linked — **no terminal needed**. Also talks to Elgato on a separate `-port` (e.g. `:28196`); that is the SDK channel, not our bridge. |
-| **Chrome extension** (`@meetdeck/extension`) | Chrome (loaded unpacked) | **ws client**, dials the port in its Options (default **`2395`**) | The functional bridge lives in the **content script**. |
-| **Dev bridge** (`@meetdeck/devbridge`) | you (optional) | ws server + ws client + HTTP | Proxy + live DOM debug. See below. |
+| **Stream Deck plugin** (`@callctl/plugin`) | the **Stream Deck app** (auto-launches the installed `.sdPlugin`) | **ws server on `:2395`** (the Meet bridge port) | Runs whenever the app is running + the plugin is linked — **no terminal needed**. Also talks to Elgato on a separate `-port` (e.g. `:28196`); that is the SDK channel, not our bridge. |
+| **Chrome extension** (`@callctl/extension`) | Chrome (loaded unpacked) | **ws client**, dials the port in its Options (default **`2395`**) | The functional bridge lives in the **content script**. |
+| **Dev bridge** (`@callctl/devbridge`) | you (optional) | ws server + ws client + HTTP | Proxy + live DOM debug. See below. |
 
 Key point: `just dev-plugin` / `dev-extension` / `dev-bridge*` are **watchers/tools**,
 not the thing that makes a component exist. The plugin exists because the Stream
@@ -130,7 +130,7 @@ substring** (or, for mic/camera, an aria-label substring on `[data-is-muted]`).
 Google renames these over time — the usual cause of "a command builds but clicks
 nothing". Those substrings are **runtime data**, not hardcoded: they live in a
 `SelectorConfig` the extension holds in a `SelectorRegistry`, seeded from
-`DEFAULT_SELECTORS` (`@meetdeck/protocol`) and overridable over the wire.
+`DEFAULT_SELECTORS` (`@callctl/protocol`) and overridable over the wire.
 
 Keys: `mic`, `camera`, `leave`, `participants`, `chat`, `handRaise`, `handLower`,
 `reactionOpener`.

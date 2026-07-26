@@ -5,7 +5,7 @@ import {
   type DebugRequest,
   type DebugResponse,
   message,
-} from "@meetdeck/protocol";
+} from "@callctl/protocol";
 import type { Transport } from "../transport/transport.js";
 import type { MeetPlugin } from "./plugin.js";
 

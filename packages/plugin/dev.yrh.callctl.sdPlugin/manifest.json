@@ -5,7 +5,7 @@
 	"Author": "Yann Hodique",
 	"Description": "A Stream Deck plugin to manage your Google Meet calls.",
 	"Category": "GMeet",
-	"URL": "https://github.com/sigma/meetdeck",
+	"URL": "https://github.com/sigma/callctl",
 	"Icon": "imgs/plugin/marketplace",
 	"CategoryIcon": "imgs/plugin/category-icon",
 	"CodePath": "bin/plugin.js",
@@ -27,11 +27,11 @@
 		"Version": "20",
 		"Debug": "enabled"
 	},
-	"UUID": "dev.yrh.meetdeck",
+	"UUID": "dev.yrh.callctl",
 	"Actions": [
 		{
 			"Name": "Leave Call",
-			"UUID": "dev.yrh.meetdeck.leave-call",
+			"UUID": "dev.yrh.callctl.leave-call",
 			"Icon": "imgs/actions/leave_call",
 			"Tooltip": "Leave Call",
 			"SupportedInMultiActions": true,
@@ -44,7 +44,7 @@
 		},
 		{
 			"Name": "Mic Off",
-			"UUID": "dev.yrh.meetdeck.mic-off",
+			"UUID": "dev.yrh.callctl.mic-off",
 			"Icon": "imgs/actions/mic_off",
 			"Tooltip": "Mic Off",
 			"SupportedInMultiActions": true,
@@ -57,7 +57,7 @@
 		},
 		{
 			"Name": "Mic On",
-			"UUID": "dev.yrh.meetdeck.mic-on",
+			"UUID": "dev.yrh.callctl.mic-on",
 			"Icon": "imgs/actions/mic_on",
 			"Tooltip": "Mic On",
 			"SupportedInMultiActions": true,
@@ -70,7 +70,7 @@
 		},
 		{
 			"Name": "Camera Off",
-			"UUID": "dev.yrh.meetdeck.camera-off",
+			"UUID": "dev.yrh.callctl.camera-off",
 			"Icon": "imgs/actions/camera_off",
 			"Tooltip": "Camera Off",
 			"SupportedInMultiActions": true,
@@ -83,7 +83,7 @@
 		},
 		{
 			"Name": "Camera On",
-			"UUID": "dev.yrh.meetdeck.camera-on",
+			"UUID": "dev.yrh.callctl.camera-on",
 			"Icon": "imgs/actions/camera_on",
 			"Tooltip": "Camera On",
 			"SupportedInMultiActions": true,
@@ -96,7 +96,7 @@
 		},
 		{
 			"Name": "Toggle Chat",
-			"UUID": "dev.yrh.meetdeck.toggle-chat",
+			"UUID": "dev.yrh.callctl.toggle-chat",
 			"Icon": "imgs/actions/toggle_chat",
 			"Tooltip": "Toggle Chat",
 			"SupportedInMultiActions": true,
@@ -109,7 +109,7 @@
 		},
 		{
 			"Name": "Toggle Participants",
-			"UUID": "dev.yrh.meetdeck.toggle-participants",
+			"UUID": "dev.yrh.callctl.toggle-participants",
 			"Icon": "imgs/actions/toggle_participants",
 			"Tooltip": "Toggle Participants",
 			"SupportedInMultiActions": true,
@@ -122,7 +122,7 @@
 		},
 		{
 			"Name": "Hand Off",
-			"UUID": "dev.yrh.meetdeck.hand-off",
+			"UUID": "dev.yrh.callctl.hand-off",
 			"Icon": "imgs/actions/hand_off",
 			"Tooltip": "Hand Off",
 			"SupportedInMultiActions": true,
@@ -135,7 +135,7 @@
 		},
 		{
 			"Name": "Hand On",
-			"UUID": "dev.yrh.meetdeck.hand-on",
+			"UUID": "dev.yrh.callctl.hand-on",
 			"Icon": "imgs/actions/hand_on",
 			"Tooltip": "Hand On",
 			"SupportedInMultiActions": true,
@@ -148,7 +148,7 @@
 		},
 		{
 			"Name": "React love",
-			"UUID": "dev.yrh.meetdeck.react-love",
+			"UUID": "dev.yrh.callctl.react-love",
 			"Icon": "imgs/actions/react_love",
 			"Tooltip": "React love",
 			"SupportedInMultiActions": true,
@@ -161,7 +161,7 @@
 		},
 		{
 			"Name": "React yes",
-			"UUID": "dev.yrh.meetdeck.react-yes",
+			"UUID": "dev.yrh.callctl.react-yes",
 			"Icon": "imgs/actions/react_yes",
 			"Tooltip": "React yes",
 			"SupportedInMultiActions": true,
@@ -174,7 +174,7 @@
 		},
 		{
 			"Name": "React party",
-			"UUID": "dev.yrh.meetdeck.react-party",
+			"UUID": "dev.yrh.callctl.react-party",
 			"Icon": "imgs/actions/react_party",
 			"Tooltip": "React party",
 			"SupportedInMultiActions": true,
@@ -187,7 +187,7 @@
 		},
 		{
 			"Name": "React clap",
-			"UUID": "dev.yrh.meetdeck.react-clap",
+			"UUID": "dev.yrh.callctl.react-clap",
 			"Icon": "imgs/actions/react_clap",
 			"Tooltip": "React clap",
 			"SupportedInMultiActions": true,
@@ -200,7 +200,7 @@
 		},
 		{
 			"Name": "React laugh",
-			"UUID": "dev.yrh.meetdeck.react-laugh",
+			"UUID": "dev.yrh.callctl.react-laugh",
 			"Icon": "imgs/actions/react_laugh",
 			"Tooltip": "React laugh",
 			"SupportedInMultiActions": true,
@@ -213,7 +213,7 @@
 		},
 		{
 			"Name": "React surprise",
-			"UUID": "dev.yrh.meetdeck.react-surprise",
+			"UUID": "dev.yrh.callctl.react-surprise",
 			"Icon": "imgs/actions/react_surprise",
 			"Tooltip": "React surprise",
 			"SupportedInMultiActions": true,
@@ -226,7 +226,7 @@
 		},
 		{
 			"Name": "React cry",
-			"UUID": "dev.yrh.meetdeck.react-cry",
+			"UUID": "dev.yrh.callctl.react-cry",
 			"Icon": "imgs/actions/react_cry",
 			"Tooltip": "React cry",
 			"SupportedInMultiActions": true,
@@ -239,7 +239,7 @@
 		},
 		{
 			"Name": "React think",
-			"UUID": "dev.yrh.meetdeck.react-think",
+			"UUID": "dev.yrh.callctl.react-think",
 			"Icon": "imgs/actions/react_think",
 			"Tooltip": "React think",
 			"SupportedInMultiActions": true,
@@ -252,7 +252,7 @@
 		},
 		{
 			"Name": "React no",
-			"UUID": "dev.yrh.meetdeck.react-no",
+			"UUID": "dev.yrh.callctl.react-no",
 			"Icon": "imgs/actions/react_no",
 			"Tooltip": "React no",
 			"SupportedInMultiActions": true,
@@ -265,7 +265,7 @@
 		},
 		{
 			"Name": "Mic Toggle",
-			"UUID": "dev.yrh.meetdeck.mic-toggle",
+			"UUID": "dev.yrh.callctl.mic-toggle",
 			"Icon": "imgs/actions/mic_on",
 			"Tooltip": "Toggle your mic",
 			"SupportedInMultiActions": false,
@@ -283,7 +283,7 @@
 		},
 		{
 			"Name": "Camera Toggle",
-			"UUID": "dev.yrh.meetdeck.camera-toggle",
+			"UUID": "dev.yrh.callctl.camera-toggle",
 			"Icon": "imgs/actions/camera_on",
 			"Tooltip": "Toggle your camera",
 			"SupportedInMultiActions": false,
@@ -301,7 +301,7 @@
 		},
 		{
 			"Name": "Hand Toggle",
-			"UUID": "dev.yrh.meetdeck.hand-toggle",
+			"UUID": "dev.yrh.callctl.hand-toggle",
 			"Icon": "imgs/actions/hand_on",
 			"Tooltip": "Toggle your hand",
 			"SupportedInMultiActions": false,

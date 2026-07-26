@@ -10,7 +10,7 @@ importers:
 
   packages/devbridge:
     dependencies:
-      '@meetdeck/protocol':
+      '@callctl/protocol':
         specifier: workspace:*
         version: link:../protocol
       '@modelcontextprotocol/sdk':
@@ -41,7 +41,7 @@ importers:
 
   packages/extension:
     dependencies:
-      '@meetdeck/protocol':
+      '@callctl/protocol':
         specifier: workspace:*
         version: link:../protocol
     devDependencies:
@@ -66,12 +66,12 @@ importers:
 
   packages/plugin:
     dependencies:
+      '@callctl/protocol':
+        specifier: workspace:*
+        version: link:../protocol
       '@elgato/streamdeck':
         specifier: ^2.1.0
         version: 2.1.0
-      '@meetdeck/protocol':
-        specifier: workspace:*
-        version: link:../protocol
       ws:
         specifier: ^8.18.0
         version: 8.21.1

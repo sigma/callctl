@@ -8,7 +8,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "rootDir": "src",
-    "outDir": "dev.yrh.meetdeck.sdPlugin/bin"
+    "outDir": "dev.yrh.callctl.sdPlugin/bin"
   },
   "include": ["src"]
 }

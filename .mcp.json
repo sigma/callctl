@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "meetdeck-devbridge": {
+    "callctl-devbridge": {
       "command": "node",
       "args": ["packages/devbridge/dist/mcp-server.js"],
       "env": {

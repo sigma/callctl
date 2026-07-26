@@ -12,7 +12,7 @@ import {
   type SelectorConfig,
   StateEvent,
   StateValue,
-} from "@meetdeck/protocol";
+} from "@callctl/protocol";
 import { type WebSocket, WebSocketServer, WebSocket as WsClient } from "ws";
 
 export interface BridgeOptions {
@@ -175,7 +175,7 @@ export class DebugBridge {
     }
 
     // Intercept selector config pushes — resolve get/set waiters. Don't forward:
-    // the @meetdeck/plugin Stream Deck side doesn't consume `selectors` pushes.
+    // the @callctl/plugin Stream Deck side doesn't consume `selectors` pushes.
     if (m.event === StateEvent.Selectors) {
       this.#resolveSelectors(m.data);
       return;

@@ -1,4 +1,4 @@
-import { Command, REACTION_SLUGS, reactionLabel, SelectorKey } from "@meetdeck/protocol";
+import { Command, REACTION_SLUGS, reactionLabel, SelectorKey } from "@callctl/protocol";
 import { type SelectorRegistry, selectors } from "../meet/selectors.js";
 import type { Transport } from "../transport/transport.js";
 import type { MeetPlugin } from "./plugin.js";
@@ -9,7 +9,7 @@ import type { MeetPlugin } from "./plugin.js";
  * `button[aria-label="<glyph>"]` (the emoji glyph is the accessible label). So
  * to react we open the panel if needed, then click the glyph's button.
  *
- * The wire `data` is the glyph (from `@meetdeck/protocol`'s `reactionLabel`).
+ * The wire `data` is the glyph (from `@callctl/protocol`'s `reactionLabel`).
  * The MIDI transport still delivers reactions as an ordinal ("3") rather than a
  * glyph, so a numeric `data` indexes into the canonical slug order.
  */
