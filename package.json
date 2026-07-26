@@ -3,18 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "description": "Stream Deck control surface for Google Meet (plugin + extension + shared protocol)",
-  "workspaces": [
-    "packages/protocol",
-    "packages/plugin",
-    "packages/extension"
-  ],
+  "packageManager": "pnpm@11.17.0",
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
-    "dev:plugin": "npm run dev -w @meetdeck/plugin",
-    "dev:extension": "npm run dev -w @meetdeck/extension"
-  },
-  "devDependencies": {
-    "@elgato/cli": "^1.7.4",
-    "typescript": "^5.5.0"
+    "build": "pnpm -r build",
+    "dev:plugin": "pnpm -F @meetdeck/plugin dev",
+    "dev:extension": "pnpm -F @meetdeck/extension dev"
   }
 }
