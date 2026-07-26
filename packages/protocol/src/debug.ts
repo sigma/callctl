@@ -53,6 +53,11 @@ export interface DebugControl {
   disabled: boolean;
   /** Trimmed, truncated `textContent` — handy when there is no aria-label. */
   text: string;
+  /** Every attribute on the element — the way to find a stable selector for a
+   *  control that has no aria-label (e.g. Meet's `jsname` / `data-*` hooks). */
+  attrs: Record<string, string>;
+  /** Truncated `outerHTML` of the element (opening tag + a little content). */
+  html: string;
 }
 
 export interface DebugResponse {

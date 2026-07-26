@@ -26,6 +26,15 @@ const DUMP_SELECTOR = "button, [role='button'], [aria-label], [data-is-muted]";
 /** Cap payload size; Meet pages can have hundreds of nodes. */
 const MAX_CONTROLS = 400;
 const MAX_TEXT = 80;
+const MAX_HTML = 300;
+
+function attrsOf(el: Element): Record<string, string> {
+  const attrs: Record<string, string> = {};
+  for (const a of el.attributes) {
+    attrs[a.name] = a.value;
+  }
+  return attrs;
+}
 
 function describe(el: Element): DebugControl {
   return {
@@ -36,6 +45,8 @@ function describe(el: Element): DebugControl {
     dataIsMuted: el.getAttribute("data-is-muted"),
     disabled: el.hasAttribute("disabled") || el.getAttribute("aria-disabled") === "true",
     text: (el.textContent ?? "").trim().slice(0, MAX_TEXT),
+    attrs: attrsOf(el),
+    html: el.outerHTML.slice(0, MAX_HTML),
   };
 }
 
