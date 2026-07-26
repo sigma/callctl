@@ -46,9 +46,17 @@ logs:
 
 # --- Extension (terminal 2) --------------------------------------------------
 
-# Watch + HMR the Chrome extension (available after the phase-4 MV3 migration)
+# Watch + HMR the Chrome extension (MV3, Vite + @crxjs)
 dev-extension:
     pnpm -F @meetdeck/extension dev
+
+# Build the unpacked MV3 extension into packages/extension/dist
+build-extension:
+    pnpm -F @meetdeck/extension build
+
+# Where to point chrome://extensions "Load unpacked" (after build-extension)
+load-extension:
+    @echo "Load unpacked extension from: {{justfile_directory()}}/packages/extension/dist"
 
 # --- Quality -----------------------------------------------------------------
 
