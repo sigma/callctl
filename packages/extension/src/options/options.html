@@ -2,13 +2,26 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Meet Driver Options</title>
+    <title>callctl Options</title>
   </head>
   <body>
+    <h1>callctl — advanced settings</h1>
+    <p>
+      In-call toggles live in the Meet widget. These are the one-time port
+      settings the widget relies on.
+    </p>
+
     <label>
-      Remote port
+      Plugin port
       <input type="number" id="port" />
     </label>
+
+    <label>
+      Dev-bridge port
+      <input type="number" id="dev-bridge-port" />
+    </label>
+
+    <!-- Future: MIDI channel/CC-per-message mapping section slots in here. -->
 
     <div id="status"></div>
     <button id="save">Save</button>
