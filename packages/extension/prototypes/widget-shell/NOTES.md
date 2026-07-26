@@ -48,5 +48,16 @@ and re-injecting on every rescan — strictly more fragile and selector-drift-pr
 _(HITL — awaiting the user's pick. Fill in the chosen variant + why, then fold the
 winner into the real content-script injection path and delete the losers + switcher.)_
 
-CHOSEN: _____
-WHY: _____
+CHOSEN: **Variant A — Floating card, bottom-right.**
+
+WHY: Lowest survival risk (self-owned host on `<html>`, observer only guards against
+removal — no re-injection into Meet's own control bar like B). Compact vertical stack of
+the four groups fits the map's brief that the widget holds the *frequent in-call toggles*
+and complements the Options page. C's ambient icon-strip status is appealing but leans on
+live connection/device status, which the map explicitly defers (*Not yet specified*).
+
+Implementation note surfaced by exploration (there is **no** existing DOM-injection / CSS /
+Shadow DOM precedent — `src/meet/` is read-and-click only): mount the card's host in a
+**Shadow DOM** wrapper appended to `document.documentElement`, so Meet's global CSS neither
+leaks into nor inherits from the widget. Styles via an inline `<style>`/`adoptedStyleSheets`
+inside the shadow root, not a global `content_scripts` `css:` entry.
