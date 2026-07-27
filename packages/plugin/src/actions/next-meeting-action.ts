@@ -325,6 +325,7 @@ export class NextMeetingAction extends SingletonAction {
       list,
       offset: settings.offset,
       now,
+      horizonMs: settings.horizonMinutes * 60 * 1000,
     });
     void action.setImage(renderFaceSvg(face));
   }

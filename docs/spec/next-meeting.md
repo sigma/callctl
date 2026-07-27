@@ -93,6 +93,7 @@ interface NextMeetingSettings {
   feedId: string;                // which global feed this key tracks (no cross-feed merge)
   offset: number;                // index into the ordered event list; default 0  (#41)
   graceMinutes: number;          // late-state dismissal grace; default 10  (#48)
+  horizonMinutes: number;        // countdown horizon (within N min of start); default 1440 (24h)
 }
 ```
 
@@ -159,17 +160,17 @@ interface MeetingInstance {
 
 The key at `offset N` renders the Nth element of this list (0-indexed). Fewer than `N+1` events in scope today → that key shows "Free" (§8).
 
-### Display horizon = today only
+### Display horizon = a configurable duration (default 24h)
 
-- The countdown only counts to the next in-scope event **starting today** (machine-local date).
-- If the next in-scope event starts on a **future** day → green **"Free" + hint** of the next meeting (e.g. `Free · Mon 9:00`).
-- If there are no future in-scope events at all → plain **"Free" / "No meetings"** (empty hint).
-- The horizon rolls over at local midnight.
+- The countdown counts to the next in-scope event **starting less than `horizonMinutes` from now** — a per-key setting (§3), default **24h**.
+- If the next in-scope event starts **beyond** that horizon → green **"Free" + hint** of the next meeting (e.g. `Free · Mon 9:00`).
+- If there are no in-scope events at all → plain **"Free" / "No meetings"** (empty hint).
+- The horizon is a **duration, not a calendar day**: it is re-derived from `now` every render tick and does not care which local date the event falls on. This deliberately replaces the earlier *today-only (same-local-day)* horizon, which misclassified meetings straddling local midnight (a 00:15 meeting looked "Free" at 23:50 because it was a different date). An already-started, not-yet-dismissed event has a negative time-to-start and is always within horizon (late count-up).
 
 ### Timezone
 
 - The countdown is timezone-agnostic: it is `instance.start` (an absolute instant) minus `now`.
-- Displayed wall-clock times and the "today" boundary use the **machine-local** timezone (an 11pm meeting is still "today").
+- Displayed wall-clock times (the "Free" hint) use the **machine-local** timezone; the horizon itself is a pure duration, so it needs no local-date reasoning.
 
 ---
 

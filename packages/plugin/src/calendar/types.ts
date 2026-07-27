@@ -99,14 +99,17 @@ export interface FeedSnapshot {
 }
 
 /**
- * The today-only display horizon of a single key (§5 "Display horizon = today
- * only"). Given the ordered list and the key's `offset`, classifies what the key
+ * The display horizon of a single key (§5). Given the ordered list, the key's
+ * `offset`, and its configurable countdown horizon, classifies what the key
  * should show — the action (#58) maps this to a live countdown or a "Free" face.
+ * The horizon is a **duration** ("within N minutes of start"), not a calendar
+ * day, so a meeting straddling local midnight is classified by how soon it is,
+ * not which date it falls on.
  */
 export type DisplayHorizon =
-  /** The key's event starts **today** (machine-local date) → live countdown. */
-  | { kind: "today"; instance: MeetingInstance }
-  /** The key's event starts on a **future** day → "Free" + a next-meeting hint. */
-  | { kind: "future"; instance: MeetingInstance }
+  /** The key's event starts **within** the horizon → live countdown. */
+  | { kind: "within"; instance: MeetingInstance }
+  /** The key's event starts **beyond** the horizon → "Free" + a next-meeting hint. */
+  | { kind: "beyond"; instance: MeetingInstance }
   /** No event at this `offset` → plain "Free" / "No meetings". */
   | { kind: "none" };

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_GRACE_MINUTES,
+  DEFAULT_HORIZON_MINUTES,
   DEFAULT_OFFSET,
   DEFAULT_POLL_INTERVAL_MINUTES,
   parseGlobalSettings,
@@ -78,14 +79,18 @@ describe("parseKeySettings (§3)", () => {
       feedId: "",
       offset: DEFAULT_OFFSET,
       graceMinutes: DEFAULT_GRACE_MINUTES,
+      horizonMinutes: DEFAULT_HORIZON_MINUTES,
     });
   });
 
   it("reads values and truncates a fractional offset", () => {
-    expect(parseKeySettings({ feedId: "work", offset: 2.9, graceMinutes: 5 })).toEqual({
+    expect(
+      parseKeySettings({ feedId: "work", offset: 2.9, graceMinutes: 5, horizonMinutes: 120 }),
+    ).toEqual({
       feedId: "work",
       offset: 2,
       graceMinutes: 5,
+      horizonMinutes: 120,
     });
   });
 
@@ -93,6 +98,12 @@ describe("parseKeySettings (§3)", () => {
     const s = parseKeySettings({ feedId: "w", offset: -1, graceMinutes: -1 });
     expect(s.offset).toBe(DEFAULT_OFFSET);
     expect(s.graceMinutes).toBe(DEFAULT_GRACE_MINUTES);
+  });
+
+  it("falls back to the default horizon for a non-positive or missing value", () => {
+    expect(parseKeySettings({}).horizonMinutes).toBe(DEFAULT_HORIZON_MINUTES);
+    expect(parseKeySettings({ horizonMinutes: 0 }).horizonMinutes).toBe(DEFAULT_HORIZON_MINUTES);
+    expect(parseKeySettings({ horizonMinutes: -30 }).horizonMinutes).toBe(DEFAULT_HORIZON_MINUTES);
   });
 });
 

@@ -87,24 +87,26 @@ export interface FaceInput {
   offset: number;
   /** The reference instant (injected by the render clock; here for determinism/testing). */
   now: Date;
+  /** The key's countdown horizon in ms (§3/§5; default 24h). */
+  horizonMs: number;
 }
 
 /**
  * Classify a key's baseline face (§8). Precedence: unconfigured beats every
  * data state (a key with no feed shows the setup prompt regardless of poll
- * status); a cold-start error beats loading; otherwise the today-only display
- * horizon (§5) decides countdown vs. Free.
+ * status); a cold-start error beats loading; otherwise the configurable display
+ * horizon (§5, "within `horizonMs` of start") decides countdown vs. Free.
  */
 export function computeFace(input: FaceInput): KeyFace {
-  const { configured, status, list, offset, now } = input;
+  const { configured, status, list, offset, now, horizonMs } = input;
 
   if (!configured) return { kind: "unconfigured" };
   if (status === "cold-error") return { kind: "error" };
   if (status === "loading") return { kind: "loading" };
 
-  const horizon = displayHorizon(list, offset, now);
+  const horizon = displayHorizon(list, offset, now, horizonMs);
   switch (horizon.kind) {
-    case "today": {
+    case "within": {
       const msToStart = horizon.instance.start.getTime() - now.getTime();
       const escalation = escalationFor(msToStart);
       return {
@@ -115,7 +117,7 @@ export function computeFace(input: FaceInput): KeyFace {
         blinkOff: isBlinkOff(escalation, now),
       };
     }
-    case "future":
+    case "beyond":
       return { kind: "free", hint: formatDayHint(horizon.instance.start) };
     case "none":
       return { kind: "free", hint: null };
