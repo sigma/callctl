@@ -4,15 +4,59 @@
  * {@link KeyFace} — the render clock (§9) calls this every tick and hands the
  * result to the SVG renderer. No Stream Deck imports: fully vitest-testable.
  *
- * This ticket (#58) covers only the **baseline** faces: the live countdown, the
- * green "Free" (+ future-day hint), the unconfigured setup prompt, and the
- * cold-start error. Escalation colours, blink/flash, the late count-up dismissal
- * and boundary advance are #59 — they layer on top of `countdown` later.
+ * The **baseline** faces (#58) are the live countdown, the green "Free" (+
+ * future-day hint), the unconfigured setup prompt, and the cold-start error.
+ * This ticket (#59) layers the §8 **escalation** onto the countdown: the
+ * per-threshold state (normal → approaching → imminent → late) and the render
+ * clock's blink/flash phase, both derived purely from `now` vs. the event start.
  */
 
 import { displayHorizon } from "./engine.js";
 import { formatCountdown, formatDayHint } from "./format.js";
 import type { FeedStatus, MeetingInstance } from "./types.js";
+
+/**
+ * The §8 escalation state of a live countdown, keyed off the time-to-start:
+ * - `normal` — `> 5 min`, steady slate.
+ * - `approaching` — `≤ 5 min`, steady orange.
+ * - `imminent` — `≤ 30 s` (still before start), red with a gentle blink.
+ * - `late` — past start (`< 0`), flashing red counting **up** `+MM:SS`.
+ */
+export type Escalation = "normal" | "approaching" | "imminent" | "late";
+
+/** `≤ 5 min` to start → approaching (§8). */
+const APPROACHING_MS = 5 * 60 * 1000;
+/** `≤ 30 s` to start → imminent (§8). */
+const IMMINENT_MS = 30 * 1000;
+/** Imminent's gentle blink: ~1.2 s period → 600 ms half-cycle (§8). */
+const IMMINENT_BLINK_HALF_MS = 600;
+/** Late's hard flash: ~0.9 s period → 450 ms half-cycle (§8). */
+const LATE_FLASH_HALF_MS = 450;
+
+/** Classify the §8 escalation from the signed ms-to-start (`start − now`). */
+function escalationFor(msToStart: number): Escalation {
+  if (msToStart < 0) return "late";
+  if (msToStart <= IMMINENT_MS) return "imminent";
+  if (msToStart <= APPROACHING_MS) return "approaching";
+  return "normal";
+}
+
+/**
+ * Whether the current render tick falls in the **off** half of the blink/flash
+ * cycle (§8), computed purely from `now` so the 500 ms render clock samples it
+ * without any per-key blink state. Only imminent (gentle) and late (hard) blink;
+ * steady states never blink.
+ */
+function isBlinkOff(escalation: Escalation, now: Date): boolean {
+  const half =
+    escalation === "imminent"
+      ? IMMINENT_BLINK_HALF_MS
+      : escalation === "late"
+        ? LATE_FLASH_HALF_MS
+        : 0;
+  if (half === 0) return false;
+  return Math.floor(now.getTime() / half) % 2 === 1;
+}
 
 /** What the key should render (§8), independent of how it's drawn. */
 export type KeyFace =
@@ -24,8 +68,12 @@ export type KeyFace =
   | { kind: "error" }
   /** Between meetings; `hint` is the next-meeting signpost (future day) or `null`. */
   | { kind: "free"; hint: string | null }
-  /** A live countdown to (or overdue count-up past) the key's event. */
-  | { kind: "countdown"; title: string; time: string; overdue: boolean };
+  /**
+   * A live countdown to (or overdue count-up past) the key's event. `escalation`
+   * picks the §8 colour/behaviour; `blinkOff` is `true` on the off half of the
+   * blink (imminent) / flash (late) cycle for the current render tick.
+   */
+  | { kind: "countdown"; title: string; time: string; escalation: Escalation; blinkOff: boolean };
 
 /** Inputs to {@link computeFace} — the key's resolved feed state at one instant. */
 export interface FaceInput {
@@ -56,13 +104,17 @@ export function computeFace(input: FaceInput): KeyFace {
 
   const horizon = displayHorizon(list, offset, now);
   switch (horizon.kind) {
-    case "today":
+    case "today": {
+      const msToStart = horizon.instance.start.getTime() - now.getTime();
+      const escalation = escalationFor(msToStart);
       return {
         kind: "countdown",
         title: horizon.instance.title,
-        time: formatCountdown(horizon.instance.start.getTime() - now.getTime()),
-        overdue: horizon.instance.start.getTime() <= now.getTime(),
+        time: formatCountdown(msToStart),
+        escalation,
+        blinkOff: isBlinkOff(escalation, now),
       };
+    }
     case "future":
       return { kind: "free", hint: formatDayHint(horizon.instance.start) };
     case "none":
