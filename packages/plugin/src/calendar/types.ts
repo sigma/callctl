@@ -58,3 +58,38 @@ export type JoinCandidate =
       joinUrl: string;
     }
   | { tier: "b" };
+
+/**
+ * One selected, still-relevant, link-bearing event instance (§5). The engine
+ * expands recurrences over a bounded horizon, drops instances with no join
+ * candidate (tier c), keeps those whose {@link end} is still in the future, and
+ * returns them ordered `start ↑ → end ↑ → uid`. A key selects one by its
+ * `offset` index into that list.
+ */
+export interface MeetingInstance {
+  /** Absolute start instant of this occurrence. */
+  start: Date;
+  /** Real `DTEND`, or `start + 30 min` synthesized when `DTEND` is absent (§5). */
+  end: Date;
+  /** `true` for a date-only (all-day) event. */
+  allDay: boolean;
+  /** Event `SUMMARY`, unwrapped to a plain string ("" if absent). */
+  title: string;
+  /** The `id` of the {@link NamedFeed} this instance came from (§3). */
+  sourceFeedId: string;
+  /** The §6 join candidate — always tier (a) or (b); tier (c) is dropped. */
+  candidate: JoinCandidate;
+}
+
+/**
+ * The today-only display horizon of a single key (§5 "Display horizon = today
+ * only"). Given the ordered list and the key's `offset`, classifies what the key
+ * should show — the action (#58) maps this to a live countdown or a "Free" face.
+ */
+export type DisplayHorizon =
+  /** The key's event starts **today** (machine-local date) → live countdown. */
+  | { kind: "today"; instance: MeetingInstance }
+  /** The key's event starts on a **future** day → "Free" + a next-meeting hint. */
+  | { kind: "future"; instance: MeetingInstance }
+  /** No event at this `offset` → plain "Free" / "No meetings". */
+  | { kind: "none" };

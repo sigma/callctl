@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 
 import commonjs from "@rollup/plugin-commonjs";
+import json from "@rollup/plugin-json";
 import nodeResolve from "@rollup/plugin-node-resolve";
 import typescript from "@rollup/plugin-typescript";
 
@@ -34,6 +35,8 @@ export default {
     typescript(),
     nodeResolve({ browser: false, exportConditions: ["node"], preferBuiltins: true }),
     commonjs(),
+    // node-ical bundles its tz table as JSON (windowsZones.json) — teach rollup to import it.
+    json(),
     isWatching && reloadPlugin,
   ],
 };
