@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { displayHorizon, parseFeed, selectMeetings } from "./engine.js";
+import { currentInstance, displayHorizon, parseFeed, selectMeetings } from "./engine.js";
 import type { MeetingInstance } from "./types.js";
 
 // Resolve fixtures from the package cwd (vitest runs in packages/plugin) rather
@@ -169,5 +169,49 @@ describe("displayHorizon — today-only horizon (§5)", () => {
       kind: "today",
       instance: b,
     });
+  });
+});
+
+describe("currentInstance — boundary advance (§9)", () => {
+  const base = new Date(2026, 5, 15, 12, 0, 0);
+  /** An instance spanning `[startMin, endMin]` minutes relative to `base`. */
+  const span = (startMin: number, endMin: number, title = "x"): MeetingInstance => ({
+    start: new Date(base.getTime() + startMin * 60_000),
+    end: new Date(base.getTime() + endMin * 60_000),
+    allDay: false,
+    title,
+    sourceFeedId: "f",
+    candidate: { tier: "b" },
+  });
+
+  it("keeps a still-running meeting current until its end", () => {
+    const running = span(-10, 20, "Running"); // started 10m ago, ends in 20m
+    const next = span(30, 60, "Next");
+    // Before the boundary, offset 0 is still the running meeting.
+    expect(currentInstance([running, next], 0, base)?.title).toBe("Running");
+  });
+
+  it("advances every offset past a meeting once its end passes", () => {
+    const ended = span(-40, -10, "Ended"); // ended 10m ago
+    const running = span(-5, 25, "Running");
+    const next = span(30, 60, "Next");
+    const list = [ended, running, next];
+    // The ended meeting has dropped out of the view; offsets re-index the rest.
+    expect(currentInstance(list, 0, base)?.title).toBe("Running");
+    expect(currentInstance(list, 1, base)?.title).toBe("Next");
+    // Two keys on one feed shift together at the boundary — offset 1 was "Next"
+    // before "Ended" dropped only because "Ended" occupied index 0.
+  });
+
+  it("returns undefined when every remaining event has ended", () => {
+    const a = span(-40, -20);
+    const b = span(-15, -5);
+    expect(currentInstance([a, b], 0, base)).toBeUndefined();
+  });
+
+  it("an end exactly at now is already past (end > now is strict)", () => {
+    const justEnded = span(-30, 0, "JustEnded"); // end === base
+    const next = span(5, 35, "Next");
+    expect(currentInstance([justEnded, next], 0, base)?.title).toBe("Next");
   });
 });
