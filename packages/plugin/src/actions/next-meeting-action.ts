@@ -18,6 +18,19 @@ import { type NextMeetingSettings, parseKeySettings } from "../settings.js";
 /** How often the render clock repaints every appeared key (§9). */
 const RENDER_TICK_MS = 500;
 
+/**
+ * Wrap an SVG document as a base64 `data:` URI for `KeyAction.setImage`. Although
+ * the SDK types accept a bare `<svg>` string, the Stream Deck app does **not**
+ * reliably render one passed verbatim (it is treated as a file path and silently
+ * ignored, leaving the manifest's default icon on the key) — the base64
+ * `data:image/svg+xml` form is the portable representation every app build
+ * honors. `Buffer` (Node, the plugin runtime) handles the multi-byte glyphs the
+ * faces use (`…`, `+`, accented titles) correctly.
+ */
+function svgToImageUri(svg: string): string {
+  return `data:image/svg+xml;base64,${Buffer.from(svg, "utf8").toString("base64")}`;
+}
+
 /** One appeared Next-Meeting key: its live SDK handle plus its parsed settings. */
 interface KeyEntry {
   action: KeyAction;
@@ -327,6 +340,6 @@ export class NextMeetingAction extends SingletonAction {
       now,
       horizonMs: settings.horizonMinutes * 60 * 1000,
     });
-    void action.setImage(renderFaceSvg(face));
+    void action.setImage(svgToImageUri(renderFaceSvg(face)));
   }
 }

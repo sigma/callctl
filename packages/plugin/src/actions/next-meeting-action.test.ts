@@ -301,3 +301,45 @@ describe("NextMeetingAction — press → open (§7)", () => {
     action.onWillDisappear(disappearEv(key));
   });
 });
+
+describe("NextMeetingAction — setImage encoding", () => {
+  const now = () => new Date(0);
+
+  /** Decode the SVG markup from the last `setImage` call (the fake types 0 args). */
+  function lastImage(key: ReturnType<typeof fakeKey>): string {
+    const uri = String((key.setImage.mock.calls.at(-1) as unknown[] | undefined)?.[0]);
+    // The Stream Deck app renders SVG only via a base64 data URI, not a bare
+    // `<svg>` string — assert we ship that form and recover the markup.
+    expect(uri.startsWith("data:image/svg+xml;base64,")).toBe(true);
+    return Buffer.from(uri.slice("data:image/svg+xml;base64,".length), "base64").toString("utf8");
+  }
+
+  it("paints the key with a base64 data: URI wrapping the rendered SVG", () => {
+    const service = fakeService({
+      snapshot: { status: "ok", list: [instance(30_000, 60_000, { title: "Sync" })] },
+    });
+    const action = new NextMeetingAction("uuid", service, { now });
+    const key = fakeKey("k1");
+
+    action.onWillAppear(appearEv(key, { feedId: "work", offset: 0 }));
+
+    expect(key.setImage).toHaveBeenCalled();
+    const svg = lastImage(key);
+    expect(svg).toContain("<svg");
+    expect(svg).toContain("Sync");
+    expect(svg).toContain("00:30"); // 30 s countdown
+    action.onWillDisappear(disappearEv(key));
+  });
+
+  it("round-trips multi-byte glyphs (the loading ellipsis) through base64", () => {
+    const service = fakeService({ snapshot: { status: "loading", list: [] } });
+    const action = new NextMeetingAction("uuid", service, { now });
+    const key = fakeKey("k1");
+
+    action.onWillAppear(appearEv(key, { feedId: "work", offset: 0 }));
+
+    const svg = lastImage(key);
+    expect(svg).toContain("…");
+    action.onWillDisappear(disappearEv(key));
+  });
+});
