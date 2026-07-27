@@ -78,6 +78,29 @@ export function defaultConfig(port: number = DEFAULT_PORT): TransportConfig {
 }
 
 /**
+ * Does a live MIDI input match a persisted {@link MidiDeviceRef}? The one match
+ * rule, shared by the {@link MidiTransport} (which inputs to bind) and the
+ * widget's device checklist (which inputs to render checked): **id-primary**
+ * (the Web MIDI `MIDIInput.id`) with a **name+manufacturer fallback**, since the
+ * id is not stable across replugs (see issue #2). The fallback only fires when
+ * both fields are present on both sides, so two nameless inputs never collide.
+ */
+export function matchesMidiDevice(
+  candidate: { id: string; name: string | null; manufacturer: string | null },
+  ref: MidiDeviceRef,
+): boolean {
+  if (candidate.id === ref.id) {
+    return true;
+  }
+  return (
+    candidate.name != null &&
+    candidate.manufacturer != null &&
+    candidate.name === ref.name &&
+    candidate.manufacturer === ref.manufacturer
+  );
+}
+
+/**
  * The port the ws client should dial. Dev-bridge mode re-points it at the
  * bridge's proxy port; otherwise it dials the plugin port directly. This is the
  * whole port-selection decision behind the live dev-bridge switch (#6): flipping

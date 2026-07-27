@@ -1,5 +1,5 @@
 import type { Message } from "@callctl/protocol";
-import type { MidiDeviceRef, MidiDevices } from "../config.js";
+import { type MidiDevices, matchesMidiDevice } from "../config.js";
 import type { MeetPlugin } from "../plugins/plugin.js";
 import { BaseTransport, type Retargetable } from "./transport.js";
 
@@ -99,7 +99,7 @@ export class MidiTransport extends BaseTransport implements Retargetable<MidiDev
     if (this.#selection === "all") {
       return true;
     }
-    return this.#selection.some((ref) => matchesDevice(input, ref));
+    return this.#selection.some((ref) => matchesMidiDevice(input, ref));
   }
 
   acceptPlugin(plugin: MeetPlugin): void {
@@ -136,24 +136,6 @@ export class MidiTransport extends BaseTransport implements Retargetable<MidiDev
     this.#inputs.clear();
     this.midiMap.clear();
   }
-}
-
-/**
- * Does a live input match a persisted device ref? Id-primary — the Web MIDI
- * `MIDIInput.id` — with a name+manufacturer fallback, since the id is not stable
- * across replugs (see issue #2). The fallback only fires when both fields are
- * present, so two nameless inputs never collide.
- */
-function matchesDevice(input: MIDIInput, ref: MidiDeviceRef): boolean {
-  if (input.id === ref.id) {
-    return true;
-  }
-  return (
-    input.name != null &&
-    input.manufacturer != null &&
-    input.name === ref.name &&
-    input.manufacturer === ref.manufacturer
-  );
 }
 
 function onMidiMessage(protocol: MidiTransport, ev: MIDIMessageEvent): void {

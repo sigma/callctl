@@ -5,6 +5,7 @@ import { loadPlugins } from "./plugins/index.js";
 import { MidiTransport } from "./transport/midi-transport.js";
 import { TransportId, TransportRegistry } from "./transport/transport-registry.js";
 import { WSTransport } from "./transport/ws-transport.js";
+import { mountWidget, NO_MIDI_INPUTS, webMidiInputSource } from "./widget/widget.js";
 
 /**
  * The extension's beating heart. Contrary to a common misreading of this
@@ -33,22 +34,29 @@ function init(
     const config = await loadConfig(local);
 
     // The registry owns the fan-out (replacing the static `MultiProtocol`) and
-    // each transport's lifecycle. WS dials the effective `wsPort` (plugin port,
-    // or the dev-bridge proxy when that's on, #6); MIDI is config-driven (#5):
-    // bound only when enabled, and only to the selected device set. Defaults
-    // (ws on, MIDI on / `"all"`) preserve today's always-on behavior.
+    // each transport's lifecycle. Both transports are config-driven: bound only
+    // when their `enabled` flag is set (#13 moved WS off its old unconditional
+    // enable so a Stream Deck toggle survives a Meet-tab reload). WS dials the
+    // effective `wsPort` (plugin port, or the dev-bridge proxy when that's on,
+    // #6); MIDI binds only the selected device set (#5). Defaults (both on, MIDI
+    // `"all"`) preserve today's always-on behavior.
     const registry = new TransportRegistry(plugins);
-    registry.enable(TransportId.WS, () => new WSTransport(wsPort(config)));
+    if (config.ws.enabled) {
+      registry.enable(TransportId.WS, () => new WSTransport(wsPort(config)));
+    }
     if (config.midi.enabled) {
       registry.enable(TransportId.MIDI, () => new MidiTransport(config.midi.devices));
     }
 
     // The Options page / widget writes the whole `config` envelope; we react to
-    // that one key and apply each transport's changes live, no tab reload:
+    // that one key and apply each transport's changes live, no tab reload. This
+    // is the *single* place config becomes registry calls — the widget (#13)
+    // only ever writes config, so all four controls land here:
+    //  - Stream Deck toggle (#13) → enable/disable ws (build/detach the socket),
     //  - ws port change (#7) / dev-bridge toggle (#6) → live `retarget` to the
     //    effective `wsPort` (redial, plugins intact; no-ops if unchanged),
     //  - MIDI master toggle (#5) → enable/disable (build/detach the transport),
-    //  - MIDI device re-select (#5) → live `retarget` (re-bind the inputs).
+    //  - MIDI device re-select (#5/#13) → live `retarget` (re-bind the inputs).
     onChanged.addListener((changes, areaName) => {
       if (areaName !== "local" || !("config" in changes)) {
         return;
@@ -58,7 +66,13 @@ function init(
         return;
       }
 
-      registry.retarget<number>(TransportId.WS, wsPort(next));
+      if (next.ws.enabled) {
+        // Idempotent: turns ws on, or leaves it for the following `retarget`.
+        registry.enable(TransportId.WS, () => new WSTransport(wsPort(next)));
+        registry.retarget<number>(TransportId.WS, wsPort(next));
+      } else {
+        registry.disable(TransportId.WS);
+      }
 
       if (next.midi.enabled) {
         // `enable` is idempotent, so this both turns MIDI on and, when it was
@@ -69,6 +83,14 @@ function init(
         registry.disable(TransportId.MIDI);
       }
     });
+
+    // The in-Meet control widget (#13). It only ever writes the `config`
+    // envelope; the reactive listener above is what turns those writes into the
+    // registry calls, so the widget needs no registry reference. Its MIDI
+    // checklist wants the connected inputs — hand it Web MIDI access, or an
+    // empty source if the browser denies/omits it, so the widget still mounts.
+    const midiSource = await webMidiInputSource().catch(() => NO_MIDI_INPUTS);
+    mountWidget({ local, onChanged, midi: midiSource });
   });
 }
 
