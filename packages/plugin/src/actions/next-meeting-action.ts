@@ -12,6 +12,7 @@ import { computeFace } from "../calendar/face.js";
 import { renderFaceSvg } from "../calendar/render.js";
 import type { CalendarService } from "../calendar/service.js";
 import type { MeetingInstance } from "../calendar/types.js";
+import type { OpenTarget } from "../open/profile-open.js";
 import { type NextMeetingSettings, parseKeySettings } from "../settings.js";
 
 /** How often the render clock repaints every appeared key (§9). */
@@ -32,6 +33,13 @@ export interface NextMeetingDeps {
    * *sent to the host*, not when the browser opens.
    */
   openUrl?: (url: string) => Promise<void>;
+  /**
+   * Configured profile-targeted open (§7 tier 2) — the plugin wires
+   * `openWithProfile` (`child_process.execFile`, no shell). Fire-and-forget like
+   * {@link openUrl}; a rejection means the launch failed (bad binary, OS not in
+   * the table, non-zero exit) and the handler degrades to tier 1 + `showAlert`.
+   */
+  openWith?: (url: string, target: OpenTarget) => Promise<void>;
   /** Structured log sink; the plugin wires `streamDeck.logger`. Never receives a URL. */
   log?: (message: string) => void;
 }
@@ -59,6 +67,7 @@ export class NextMeetingAction extends SingletonAction {
   readonly #service: CalendarService;
   readonly #now: () => Date;
   readonly #openUrl: (url: string) => Promise<void>;
+  readonly #openWith: (url: string, target: OpenTarget) => Promise<void>;
   readonly #log: (message: string) => void;
   readonly #keys = new Map<string, KeyEntry>();
   /**
@@ -78,6 +87,8 @@ export class NextMeetingAction extends SingletonAction {
     this.#now = deps.now ?? (() => new Date());
     // Default openUrl is a safe no-op — the plugin wires the real host open.
     this.#openUrl = deps.openUrl ?? (async () => {});
+    // Default openWith rejects so an unwired tier-2 open cleanly degrades to tier 1.
+    this.#openWith = deps.openWith ?? (async () => Promise.reject(new Error("openWith not wired")));
     this.#log = deps.log ?? (() => {});
   }
 
@@ -119,7 +130,9 @@ export class NextMeetingAction extends SingletonAction {
    *   `showOk` between meetings.
    *
    * The open is **fire-and-forget** (`.catch` + log only) so a rejected request
-   * never escapes the key handler (§7). Tier-2 browser-profile targeting is #61.
+   * never escapes the key handler (§7). When the feed carries an `open` config
+   * (§3), the press instead targets that browser profile (§7 tier 2, see
+   * {@link dispatchOpen}), degrading to tier 1 if the launch fails.
    */
   override onKeyDown(ev: KeyDownEvent): void {
     if (!ev.action.isKey()) return;
@@ -148,13 +161,7 @@ export class NextMeetingAction extends SingletonAction {
       void ev.action.showAlert();
       return;
     }
-    // Fire-and-forget host open — resolves when *sent*, not when the browser
-    // opens; a rejection is logged, never thrown out of the handler (§7).
-    void this.#openUrl(target).catch((err) =>
-      this.#log(
-        `next-meeting: openUrl failed: ${err instanceof Error ? err.message : String(err)}`,
-      ),
-    );
+    this.#dispatchOpen(target, settings.feedId, ev.action);
   }
 
   /**
@@ -164,6 +171,44 @@ export class NextMeetingAction extends SingletonAction {
   #openTarget(candidate: MeetingInstance["candidate"], feedId: string): string | undefined {
     if (candidate.tier === "a") return candidate.joinUrl;
     return this.#service.calendarFallback(feedId);
+  }
+
+  /**
+   * Open `url` for a press (§7). If the feed has an `open` config (§3), target
+   * that browser profile via {@link NextMeetingDeps.openWith} (tier 2); a launch
+   * failure degrades to tier 1 + `showAlert` + log. Otherwise open directly in
+   * the default browser (tier 1). Both tiers are fire-and-forget.
+   */
+  #dispatchOpen(url: string, feedId: string, action: KeyAction): void {
+    const target = this.#service.openConfig(feedId);
+    if (target === undefined) {
+      this.#tier1Open(url);
+      return;
+    }
+    // Tier 2: exec into the configured browser profile. Only a spawn-level
+    // failure is detectable (fire-and-forget); on any rejection, degrade to the
+    // default browser and flag it so the user notices the profile didn't take.
+    void this.#openWith(url, target).catch((err) => {
+      this.#log(
+        `next-meeting: profile open failed (${target.browser}/${target.profile}), ` +
+          `falling back to default browser: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      void action.showAlert();
+      this.#tier1Open(url);
+    });
+  }
+
+  /**
+   * Tier-1 host-delegated open (§7): resolves when *sent* to the host, not when
+   * the browser opens. Fire-and-forget — a rejection is logged, never thrown out
+   * of the key handler.
+   */
+  #tier1Open(url: string): void {
+    void this.#openUrl(url).catch((err) =>
+      this.#log(
+        `next-meeting: openUrl failed: ${err instanceof Error ? err.message : String(err)}`,
+      ),
+    );
   }
 
   // ---- clocks ------------------------------------------------------------
