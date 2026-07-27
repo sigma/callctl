@@ -34,6 +34,8 @@ export function buildActions(remote: MeetRemote): SingletonAction[] {
     // Note the Go naming quirk: "hand-off" raises, "hand-on" lowers.
     ["hand-off", () => remote.raiseHand()],
     ["hand-on", () => remote.lowerHand()],
+    ["captions-off", () => remote.disableCaptions()],
+    ["captions-on", () => remote.enableCaptions()],
   ];
   for (const [key, press] of simple) {
     actions.push(new SimpleAction(uuid(key), press));
@@ -73,6 +75,16 @@ export function buildActions(remote: MeetRemote): SingletonAction[] {
         ask: () => remote.askHandState(),
         led: () => remote.handState(),
         disconnectedImage: img("hand_disconnected"),
+      },
+      remote,
+    ),
+    new ToggleAction(
+      {
+        uuid: uuid("captions-toggle"),
+        toggle: () => remote.toggleCaptions(),
+        ask: () => remote.askCaptionsState(),
+        led: () => remote.captionsState(),
+        disconnectedImage: img("captions_disconnected"),
       },
       remote,
     ),

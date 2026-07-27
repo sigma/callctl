@@ -83,6 +83,7 @@ describe("MeetRemote", () => {
     expect(remote.micState()).toBe(true);
     expect(remote.cameraState()).toBe(true);
     expect(remote.handState()).toBe(false); // handLowered=false
+    expect(remote.captionsState()).toBe(false); // captionsOff=true
   });
 
   it("marks connected and queries all state on connect", async () => {
@@ -92,11 +93,12 @@ describe("MeetRemote", () => {
     await eventually(() => remote.connected);
     expect(changes).toBeGreaterThan(0);
 
-    await eventually(() => ext.received.length >= 3);
+    await eventually(() => ext.received.length >= 4);
     const events = ext.received.map((m) => m.event);
     expect(events).toContain(Command.GetMicState);
     expect(events).toContain(Command.GetCameraState);
     expect(events).toContain(Command.GetHandState);
+    expect(events).toContain(Command.GetCaptionsState);
   });
 
   it("caches inbound state pushes and notifies listeners", async () => {
@@ -112,6 +114,12 @@ describe("MeetRemote", () => {
 
     ext.send(StateEvent.HandState, StateValue.Lowered);
     await eventually(() => remote.handState() === true);
+
+    ext.send(StateEvent.CaptionsState, StateValue.CaptionsOn);
+    await eventually(() => remote.captionsState() === true);
+
+    ext.send(StateEvent.CaptionsState, StateValue.CaptionsOff);
+    await eventually(() => remote.captionsState() === false);
 
     ext.send(StateEvent.MicState, StateValue.Unmuted);
     await eventually(() => remote.micState() === true);

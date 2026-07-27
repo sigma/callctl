@@ -27,6 +27,11 @@ export const Command = {
   GetHandState: "getHandState",
   // react add-on (was gated behind `!public` in Go)
   React: "react",
+  // captions add-on (label-keyed like hand; no `aria-pressed`)
+  EnableCaptions: "enableCaptions",
+  DisableCaptions: "disableCaptions",
+  ToggleCaptions: "toggleCaptions",
+  GetCaptionsState: "getCaptionsState",
   // config-over-the-wire selectors (see selectors.ts); currently driven by the
   // dev bridge — the @callctl/plugin Stream Deck side doesn't emit these yet
   SetSelectors: "setSelectors",
@@ -39,6 +44,7 @@ export const StateEvent = {
   CameraState: "cameraState",
   MicState: "micState",
   HandState: "handState",
+  CaptionsState: "captionsState",
   /** Full {@link SelectorConfig} JSON, pushed after get/set-selectors. */
   Selectors: "selectors",
 } as const;
@@ -50,6 +56,8 @@ export const StateValue = {
   Unmuted: "unmuted",
   Lowered: "lowered",
   Raised: "raised",
+  CaptionsOn: "captionsOn",
+  CaptionsOff: "captionsOff",
 } as const;
 export type StateValue = (typeof StateValue)[keyof typeof StateValue];
 
