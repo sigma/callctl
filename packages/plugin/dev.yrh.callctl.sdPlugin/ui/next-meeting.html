@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Next Meeting</title>
+    <!--
+      The plugin's first Property Inspector (§11). Deliberately self-contained
+      vanilla HTML/JS: a PI is a static file loaded by the Stream Deck app, NOT
+      part of the rollup bundle (which builds only src/plugin.ts), so it carries
+      no imports and no CDN dependency. It speaks the documented Stream Deck PI
+      websocket protocol directly (registration + get/set settings + sendToPlugin).
+
+      Secret handling (§12): the feed URL is a capability secret. It lives only in
+      GLOBAL settings (never per-key, so it stays out of .streamDeckProfile
+      exports), is shown masked with a reveal toggle, and is never logged.
+    -->
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #2d2d2d;
+        --field: #3d3d3d;
+        --border: #1b1b1b;
+        --text: #d8d8d8;
+        --muted: #969696;
+        --accent: #77aaff;
+        --ok: #3fbf5f;
+        --err: #ff5f56;
+        --radius: 4px;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 8px 12px 16px;
+        font: 12px/1.4 "Segoe UI", -apple-system, system-ui, sans-serif;
+        color: var(--text);
+        background: var(--bg);
+      }
+      h2 {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        margin: 14px 0 6px;
+        font-weight: 600;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 6px 0;
+      }
+      .row > label {
+        flex: 0 0 96px;
+        text-align: right;
+        color: var(--muted);
+      }
+      .row > .control {
+        flex: 1 1 auto;
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        min-width: 0;
+      }
+      input,
+      select {
+        background: var(--field);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 4px 6px;
+        min-width: 0;
+        width: 100%;
+        font: inherit;
+      }
+      input[type="number"] {
+        width: 68px;
+        flex: 0 0 auto;
+      }
+      button {
+        background: var(--field);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 4px 9px;
+        cursor: pointer;
+        font: inherit;
+        white-space: nowrap;
+      }
+      button:hover {
+        background: #4a4a4a;
+      }
+      button.icon {
+        padding: 4px 7px;
+      }
+      details {
+        margin-top: 6px;
+        border-top: 1px solid var(--border);
+        padding-top: 6px;
+      }
+      summary {
+        cursor: pointer;
+        color: var(--muted);
+        text-transform: uppercase;
+        font-size: 11px;
+        letter-spacing: 0.06em;
+        user-select: none;
+      }
+      .feed {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 8px;
+        margin: 8px 0;
+        background: #333;
+      }
+      .feed .line {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        margin: 4px 0;
+      }
+      .feed .line > label {
+        flex: 0 0 60px;
+        color: var(--muted);
+      }
+      .msg {
+        font-size: 11px;
+        margin: 3px 0 0 66px;
+        min-height: 14px;
+      }
+      .msg.err {
+        color: var(--err);
+      }
+      .msg.ok {
+        color: var(--ok);
+      }
+      .msg.muted {
+        color: var(--muted);
+      }
+      .hint {
+        color: var(--muted);
+        font-size: 11px;
+        margin: 6px 0 2px;
+      }
+      .hint code {
+        color: var(--accent);
+      }
+      .empty {
+        color: var(--muted);
+        font-style: italic;
+        margin: 6px 0;
+      }
+      .open-controls {
+        gap: 6px;
+      }
+      .open-controls select {
+        flex: 0 0 108px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ── Per-key config (stored in this key's action settings) ─────────── -->
+    <div class="row">
+      <label for="feed">Feed</label>
+      <div class="control"><select id="feed"></select></div>
+    </div>
+    <div class="row">
+      <label for="offset">Offset</label>
+      <div class="control">
+        <input type="number" id="offset" min="0" step="1" value="0" />
+        <span class="hint" style="margin: 0">list index — 0 is the next meeting</span>
+      </div>
+    </div>
+    <div class="row">
+      <label for="grace">Grace (min)</label>
+      <div class="control">
+        <input type="number" id="grace" min="0" step="1" value="10" />
+        <span class="hint" style="margin: 0">minutes late before the key advances</span>
+      </div>
+    </div>
+
+    <!-- ── Global feed registry (stored in plugin-wide global settings) ──── -->
+    <details id="manage" open>
+      <summary>Manage feeds (global)</summary>
+
+      <div id="feeds"></div>
+      <div class="row" style="margin-top: 8px">
+        <label></label>
+        <div class="control"><button id="add">+ Add feed</button></div>
+      </div>
+
+      <div class="row" style="margin-top: 10px">
+        <label for="poll">Poll interval (min)</label>
+        <div class="control"><input type="number" id="poll" min="1" step="1" value="15" /></div>
+      </div>
+
+      <p class="hint">
+        A feed URL is a <strong>secret — treat it like a password</strong>. It is stored only in
+        global settings (never exported with a profile) and shown masked above. If one leaks,
+        <strong>rotate it</strong>: regenerate the secret iCal URL at your calendar provider and paste
+        the new one here.
+      </p>
+    </details>
+
+    <template id="feed-tpl">
+      <div class="feed">
+        <div class="line">
+          <label>Name</label>
+          <input class="f-name" type="text" placeholder="Work" />
+          <button class="icon f-remove" title="Remove feed">✕</button>
+        </div>
+        <div class="line">
+          <label>URL</label>
+          <input class="f-url" type="password" placeholder="https://…/basic.ics (secret)" />
+          <button class="icon f-reveal" title="Show / hide URL">👁</button>
+          <button class="f-test">Test</button>
+        </div>
+        <div class="msg muted f-status"></div>
+        <div class="line open-controls">
+          <label>Open in</label>
+          <select class="f-browser">
+            <option value="">Default browser</option>
+            <option value="chrome">Chrome</option>
+            <option value="chromium">Chromium</option>
+            <option value="edge">Edge</option>
+            <option value="brave">Brave</option>
+          </select>
+          <input class="f-profile" type="text" placeholder="Profile folder (e.g. Default)" />
+        </div>
+        <div class="hint">
+          Leave <em>Open in</em> on “Default browser” to use your system default. To target a specific
+          Chrome profile, pick the browser and enter its profile <em>folder</em> name from
+          <code>chrome://version</code> (the “Profile Path” — e.g. <code>Default</code>,
+          <code>Profile 1</code>).
+        </div>
+      </div>
+    </template>
+
+    <script>
+      "use strict";
+
+      // ── Stream Deck PI protocol client ──────────────────────────────────
+      // The Stream Deck app calls connectElgatoStreamDeckSocket(...) on load; we
+      // open the websocket, register, and expose get/set settings + sendToPlugin.
+      let ws = null;
+      let piContext = null; // this PI's context (used for settings ops)
+      let actionUUID = null; // the action's UUID (needed for sendToPlugin)
+
+      function send(payload) {
+        if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
+      }
+      function setGlobalSettings(settings) {
+        send({ event: "setGlobalSettings", context: piContext, payload: settings });
+      }
+      function setSettings(settings) {
+        send({ event: "setSettings", context: piContext, payload: settings });
+      }
+      function sendToPlugin(payload) {
+        send({ event: "sendToPlugin", action: actionUUID, context: piContext, payload });
+      }
+
+      // ── Local state (mirrors the §3 schema) ─────────────────────────────
+      let global = { feeds: [], pollIntervalMinutes: 15 };
+      let keySettings = { feedId: "", offset: 0, graceMinutes: 10 };
+      const pendingTests = new Map(); // requestId -> status element
+
+      const $ = (sel, root = document) => root.querySelector(sel);
+
+      // ── Feed-URL normalization (§4/§12) ─────────────────────────────────
+      // Mirrors the plugin's normalizeFeedUrl: swap webcal(s):// → https:// then
+      // parse with the WHATWG URL parser and require http(s). No hand-rolled URL
+      // grammar — the scheme swap is a prefix substitution, the rest is `new URL`.
+      function normalizeFeedUrl(raw) {
+        const rewritten = String(raw || "")
+          .trim()
+          .replace(/^webcals?:\/\//i, "https://");
+        if (rewritten === "") return { ok: false };
+        let u;
+        try {
+          u = new URL(rewritten);
+        } catch {
+          return { ok: false };
+        }
+        if (u.protocol !== "http:" && u.protocol !== "https:") return { ok: false };
+        return { ok: true, url: u.toString() };
+      }
+
+      // ── Per-key controls ────────────────────────────────────────────────
+      function renderFeedOptions() {
+        const select = $("#feed");
+        const current = keySettings.feedId;
+        select.innerHTML = "";
+        const none = document.createElement("option");
+        none.value = "";
+        none.textContent = global.feeds.length ? "— none —" : "— no feeds yet —";
+        select.appendChild(none);
+        for (const feed of global.feeds) {
+          const opt = document.createElement("option");
+          opt.value = feed.id;
+          opt.textContent = feed.name || "(unnamed feed)";
+          select.appendChild(opt);
+        }
+        // Keep the current selection even if it points at a since-deleted feed:
+        // an unknown value simply falls back to "— none —" (the §8 setup prompt).
+        select.value = current;
+      }
+
+      function applyKeySettings(s) {
+        keySettings = {
+          feedId: typeof s.feedId === "string" ? s.feedId : "",
+          offset: Number.isFinite(s.offset) ? Math.max(0, Math.trunc(s.offset)) : 0,
+          graceMinutes: Number.isFinite(s.graceMinutes) ? Math.max(0, s.graceMinutes) : 10,
+        };
+        $("#feed").value = keySettings.feedId;
+        $("#offset").value = String(keySettings.offset);
+        $("#grace").value = String(keySettings.graceMinutes);
+        renderFeedOptions();
+      }
+
+      $("#feed").addEventListener("change", (e) => {
+        keySettings.feedId = e.target.value;
+        setSettings(keySettings);
+      });
+      $("#offset").addEventListener("change", (e) => {
+        const n = parseInt(e.target.value, 10);
+        keySettings.offset = Number.isFinite(n) && n >= 0 ? n : 0;
+        e.target.value = String(keySettings.offset);
+        setSettings(keySettings);
+      });
+      $("#grace").addEventListener("change", (e) => {
+        const n = parseInt(e.target.value, 10);
+        keySettings.graceMinutes = Number.isFinite(n) && n >= 0 ? n : 10;
+        e.target.value = String(keySettings.graceMinutes);
+        setSettings(keySettings);
+      });
+
+      // ── Global feed editor ──────────────────────────────────────────────
+      function newFeedId() {
+        // Stable, opaque id so renames never break per-key feedId refs (§3).
+        if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+        return "feed-" + Math.abs(Date.now()).toString(36) + Math.random().toString(36).slice(2, 8);
+      }
+
+      function commitGlobal() {
+        setGlobalSettings(global);
+        renderFeedOptions(); // feed names/ids may have changed
+      }
+
+      function renderFeeds() {
+        const host = $("#feeds");
+        host.innerHTML = "";
+        if (!global.feeds.length) {
+          const empty = document.createElement("div");
+          empty.className = "empty";
+          empty.textContent = "No feeds yet. Add one, paste its secret iCal URL, then Test it.";
+          host.appendChild(empty);
+        }
+        for (const feed of global.feeds) host.appendChild(renderFeedRow(feed));
+      }
+
+      function renderFeedRow(feed) {
+        const node = $("#feed-tpl").content.firstElementChild.cloneNode(true);
+        const nameEl = $(".f-name", node);
+        const urlEl = $(".f-url", node);
+        const revealEl = $(".f-reveal", node);
+        const testEl = $(".f-test", node);
+        const removeEl = $(".f-remove", node);
+        const statusEl = $(".f-status", node);
+        const browserEl = $(".f-browser", node);
+        const profileEl = $(".f-profile", node);
+
+        nameEl.value = feed.name || "";
+        urlEl.value = feed.url || "";
+        browserEl.value = feed.open ? feed.open.browser : "";
+        profileEl.value = feed.open ? feed.open.profile : "";
+
+        nameEl.addEventListener("change", () => {
+          feed.name = nameEl.value;
+          commitGlobal();
+        });
+
+        urlEl.addEventListener("change", () => {
+          const raw = urlEl.value;
+          if (raw.trim() === "") {
+            feed.url = "";
+            statusEl.className = "msg muted f-status";
+            statusEl.textContent = "";
+            commitGlobal();
+            return;
+          }
+          const norm = normalizeFeedUrl(raw);
+          if (norm.ok) {
+            feed.url = norm.url;
+            urlEl.value = norm.url; // reflect the webcal→https rewrite back to the user
+            statusEl.className = "msg muted f-status";
+            statusEl.textContent = "Saved. Press Test to check it.";
+          } else {
+            // Keep the raw text so the user can fix it, but flag it and don't
+            // pretend it's a usable feed.
+            feed.url = raw.trim();
+            statusEl.className = "msg err f-status";
+            statusEl.textContent = "Not a valid http(s)/webcal URL.";
+          }
+          commitGlobal();
+        });
+
+        revealEl.addEventListener("click", () => {
+          urlEl.type = urlEl.type === "password" ? "text" : "password";
+        });
+
+        const persistOpen = () => {
+          const browser = browserEl.value;
+          const profile = profileEl.value.trim();
+          if (browser && profile) feed.open = { browser, profile };
+          else delete feed.open; // empty ⇒ default openUrl (§7 tier 1)
+          commitGlobal();
+        };
+        browserEl.addEventListener("change", persistOpen);
+        profileEl.addEventListener("change", persistOpen);
+
+        testEl.addEventListener("click", () => runTest(feed, statusEl));
+        removeEl.addEventListener("click", () => {
+          global.feeds = global.feeds.filter((f) => f !== feed);
+          commitGlobal();
+          renderFeeds();
+        });
+
+        return node;
+      }
+
+      $("#add").addEventListener("click", () => {
+        global.feeds.push({ id: newFeedId(), name: "", url: "" });
+        commitGlobal();
+        renderFeeds();
+      });
+
+      $("#poll").addEventListener("change", (e) => {
+        const n = parseInt(e.target.value, 10);
+        global.pollIntervalMinutes = Number.isFinite(n) && n > 0 ? n : 15;
+        e.target.value = String(global.pollIntervalMinutes);
+        commitGlobal();
+      });
+
+      // ── [Test] round-trip (§11) ─────────────────────────────────────────
+      function runTest(feed, statusEl) {
+        const norm = normalizeFeedUrl(feed.url);
+        if (!norm.ok) {
+          statusEl.className = "msg err f-status";
+          statusEl.textContent = "Enter a valid feed URL first.";
+          return;
+        }
+        const requestId = newFeedId();
+        pendingTests.set(requestId, statusEl);
+        statusEl.className = "msg muted f-status";
+        statusEl.textContent = "Testing…";
+        sendToPlugin({ command: "testFeed", requestId, url: norm.url });
+      }
+
+      function renderTestResult(requestId, result) {
+        const statusEl = pendingTests.get(requestId);
+        if (!statusEl) return;
+        pendingTests.delete(requestId);
+        if (result && result.ok) {
+          const parts = [`Reachable — parsed ${result.events} event(s)`];
+          if (result.joinable === 0) parts.push("none with a join link");
+          else if (result.next) {
+            const when = new Date(result.next.startMs).toLocaleString();
+            const title = result.next.title || "(untitled)";
+            parts.push(`next joinable: “${title}” at ${when}`);
+          }
+          statusEl.className = "msg ok f-status";
+          statusEl.textContent = `✓ ${parts.join("; ")}.`;
+        } else {
+          statusEl.className = "msg err f-status";
+          statusEl.textContent = `✗ ${describeError(result)}`;
+        }
+      }
+
+      function describeError(result) {
+        const err = result && result.error;
+        switch (err) {
+          case "http":
+            return `Server returned HTTP ${result.status}${
+              result.status === 401 || result.status === 403 ? " (check the secret URL)" : ""
+            }.`;
+          case "not-a-calendar":
+            return "Reachable, but the response isn’t an iCal calendar.";
+          case "timeout":
+            return "Timed out — the feed took too long to respond.";
+          case "network":
+            return "Could not reach the feed (network/DNS error).";
+          case "scheme":
+            return "URL scheme must be http(s) or webcal(s).";
+          default:
+            return "Test failed.";
+        }
+      }
+
+      // ── Inbound message routing ─────────────────────────────────────────
+      function onMessage(evt) {
+        let msg;
+        try {
+          msg = JSON.parse(evt.data);
+        } catch {
+          return;
+        }
+        switch (msg.event) {
+          case "didReceiveGlobalSettings": {
+            const s = (msg.payload && msg.payload.settings) || {};
+            global = {
+              feeds: Array.isArray(s.feeds) ? s.feeds : [],
+              pollIntervalMinutes:
+                Number.isFinite(s.pollIntervalMinutes) && s.pollIntervalMinutes > 0
+                  ? s.pollIntervalMinutes
+                  : 15,
+            };
+            $("#poll").value = String(global.pollIntervalMinutes);
+            renderFeeds();
+            renderFeedOptions();
+            break;
+          }
+          case "didReceiveSettings": {
+            applyKeySettings((msg.payload && msg.payload.settings) || {});
+            break;
+          }
+          case "sendToPropertyInspector": {
+            const p = msg.payload || {};
+            if (p.command === "testResult") renderTestResult(p.requestId, p.result);
+            break;
+          }
+        }
+      }
+
+      // ── Entry point called by the Stream Deck host ──────────────────────
+      window.connectElgatoStreamDeckSocket = (
+        inPort,
+        inUUID,
+        inRegisterEvent,
+        _inInfo,
+        inActionInfo,
+      ) => {
+        piContext = inUUID;
+        let actionInfo = {};
+        try {
+          actionInfo = JSON.parse(inActionInfo) || {};
+        } catch {
+          actionInfo = {};
+        }
+        actionUUID = actionInfo.action || null;
+
+        ws = new WebSocket("ws://127.0.0.1:" + inPort);
+        ws.addEventListener("open", () => {
+          send({ event: inRegisterEvent, uuid: inUUID });
+          // Per-key settings ride along in actionInfo; global settings we request.
+          applyKeySettings((actionInfo.payload && actionInfo.payload.settings) || {});
+          send({ event: "getGlobalSettings", context: inUUID });
+        });
+        ws.addEventListener("message", onMessage);
+      };
+    </script>
+  </body>
+</html>

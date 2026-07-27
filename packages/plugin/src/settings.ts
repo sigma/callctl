@@ -4,10 +4,10 @@
  * consumes. Kept UI-agnostic (no Stream Deck imports) so the parse/resolve
  * helpers stay vitest-testable.
  *
- * For v1 the global feed list is **seeded manually as JSON global settings**;
- * the Property Inspector arrives in #60. Every value that reaches us from the
- * Stream Deck settings store is therefore untrusted/partial — the `parse*`
- * helpers coerce and default defensively rather than trusting the shape.
+ * The Property Inspector (§11, #60) reads/writes these shapes over the Stream
+ * Deck settings store. Every value that reaches us from that store is still
+ * untrusted/partial (a hand-seeded blob, an older PI, a deleted feed) — the
+ * `parse*` helpers coerce and default defensively rather than trusting the shape.
  */
 
 /** Chromium-family browser a feed can target for profile-specific opens (§3, #51). */
