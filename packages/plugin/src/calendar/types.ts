@@ -82,6 +82,23 @@ export interface MeetingInstance {
 }
 
 /**
+ * Freshness of a feed's cached event set (§9), driving the face selection in §8:
+ * - `loading` — no successful poll yet and no failure yet (cold start in flight).
+ * - `ok` — a usable cache exists; render off it (even if the *last* poll failed,
+ *   §9 "failure with a usable cache → keep rendering, no visible change").
+ * - `cold-error` — a poll failed and there is **no** cache to fall back on →
+ *   the dedicated cold-start error face (§8).
+ */
+export type FeedStatus = "loading" | "ok" | "cold-error";
+
+/** A snapshot of one feed's cached selection + freshness, read by the render clock. */
+export interface FeedSnapshot {
+  /** The ordered link-bearing instances from the last successful poll ([] until then). */
+  list: MeetingInstance[];
+  status: FeedStatus;
+}
+
+/**
  * The today-only display horizon of a single key (§5 "Display horizon = today
  * only"). Given the ordered list and the key's `offset`, classifies what the key
  * should show — the action (#58) maps this to a live countdown or a "Free" face.
