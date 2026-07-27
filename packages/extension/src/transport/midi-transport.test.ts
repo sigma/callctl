@@ -153,6 +153,41 @@ describe("MidiTransport", () => {
     expect(bound(late)).toBe(false);
   });
 
+  test("active is true only while ≥1 device is bound", async () => {
+    const input = new FakeInput("a", "A", "acme");
+    const access = new FakeAccess([input]);
+    const midi = new MidiTransport("all", fakeNav(access));
+    expect(midi.active()).toBe(false); // access not yet acquired
+    await flush();
+    expect(midi.active()).toBe(true);
+
+    access.statechange(() => access.inputs.delete("a")); // unplug the only device
+    expect(midi.active()).toBe(false);
+  });
+
+  test("onStatusChange fires on bind and on the drop to zero", async () => {
+    const input = new FakeInput("a", "A", "acme");
+    const access = new FakeAccess([input]);
+    const midi = new MidiTransport("all", fakeNav(access));
+    const onChange = vi.fn();
+    midi.onStatusChange(onChange);
+
+    await flush(); // reconcile binds → false → true
+    expect(onChange).toHaveBeenCalledTimes(1);
+
+    midi.detach(); // close clears inputs → true → false
+    expect(onChange).toHaveBeenCalledTimes(2);
+  });
+
+  test("active is false once detached", async () => {
+    const input = new FakeInput("a", "A", "acme");
+    const access = new FakeAccess([input]);
+    const midi = new MidiTransport("all", fakeNav(access));
+    await flush();
+    midi.detach();
+    expect(midi.active()).toBe(false);
+  });
+
   test("routes a Control-Change on channel 15 to the matching handler", async () => {
     const input = new FakeInput("a", "A", "acme");
     const access = new FakeAccess([input]);

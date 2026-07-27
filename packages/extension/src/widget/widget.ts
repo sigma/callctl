@@ -7,6 +7,7 @@ import {
   type TransportConfig,
 } from "../config.js";
 import type { Disposer } from "../disposer.js";
+import type { TransportStatus } from "../transport/transport-registry.js";
 import { WIDGET_STYLE } from "./style.js";
 
 /**
@@ -57,6 +58,25 @@ export const NO_MIDI_INPUTS: MidiInputSource = {
 };
 
 /**
+ * The widget's window onto live transport status — the read-only counterpart to
+ * {@link MidiInputSource}. `snapshot` is the current {@link TransportStatus}
+ * (only *enabled* transports keyed, each a live boolean); `subscribe` fires on
+ * any change. This is the whole of the widget's status power: it can *read*
+ * liveness but has no handle on the `TransportRegistry`, so #13's pure
+ * config-writer separation survives.
+ */
+export interface TransportStatusSource {
+  snapshot(): TransportStatus;
+  subscribe(onChange: () => void): Disposer;
+}
+
+/** A status source that reports nothing live and never changes — the default when unwired. */
+export const NO_TRANSPORT_STATUS: TransportStatusSource = {
+  snapshot: () => ({}),
+  subscribe: () => () => {},
+};
+
+/**
  * Wrap the browser's Web MIDI access as a {@link MidiInputSource}. Uses
  * `addEventListener("statechange")` rather than assigning `onstatechange`, so it
  * never clobbers the {@link MidiTransport}'s own hotplug handler if the browser
@@ -92,6 +112,8 @@ export type WidgetDeps = {
   onChanged: typeof chrome.storage.onChanged;
   /** Connected MIDI inputs for the checklist; {@link NO_MIDI_INPUTS} when Web MIDI is off. */
   midi?: MidiInputSource;
+  /** Live transport liveness for the row dots; {@link NO_TRANSPORT_STATUS} when unwired. */
+  status?: TransportStatusSource;
   doc?: Document;
 };
 
@@ -143,23 +165,47 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-/** Build a labelled toggle-switch row; returns the row and its checkbox. */
+/**
+ * Set a live dot's colour from the transport's (enabled, active) state: hidden
+ * when disabled, green when enabled-and-active, amber when enabled-but-not (ws
+ * reconnecting, MIDI on with nothing bound). Only the two real transport rows —
+ * Stream Deck and MIDI — carry a dot.
+ */
+function paintDot(dot: HTMLElement, enabled: boolean, active: boolean): void {
+  dot.className = !enabled ? "dot hidden" : active ? "dot live" : "dot stale";
+}
+
+/**
+ * Build a labelled toggle-switch row; returns the row and its checkbox. Rows
+ * for a *real transport* (`withDot`) also carry a live-status dot before the
+ * switch; modifier rows (dev-bridge) and the checklist omit it.
+ */
 function toggleRow(
   doc: Document,
   label: string,
-): { row: HTMLDivElement; sub: HTMLElement; input: HTMLInputElement } {
+  withDot = false,
+): { row: HTMLDivElement; sub: HTMLElement; input: HTMLInputElement; dot?: HTMLElement } {
   const sub = el(doc, "small");
   const input = el(doc, "input", { type: "checkbox" });
+  const dot = withDot ? el(doc, "span", { className: "dot hidden" }) : undefined;
+  const trailing: (Node | string)[] = [];
+  if (dot !== undefined) {
+    trailing.push(dot);
+  }
+  trailing.push(
+    el(doc, "label", { className: "sw" }, [input, el(doc, "span", { className: "track" })]),
+  );
   const row = el(doc, "div", { className: "row" }, [
     el(doc, "div", { className: "lbl" }, [label, sub]),
-    el(doc, "label", { className: "sw" }, [input, el(doc, "span", { className: "track" })]),
+    ...trailing,
   ]);
-  return { row, sub, input };
+  return { row, sub, input, dot };
 }
 
 export function mountWidget(deps: WidgetDeps): TransportWidget {
   const doc = deps.doc ?? document;
   const source = deps.midi ?? NO_MIDI_INPUTS;
+  const statusSource = deps.status ?? NO_TRANSPORT_STATUS;
 
   // Self-owned Shadow-DOM host on <html>: isolates Meet's global CSS from the
   // widget (and vice-versa) and gives the survival observer one node to guard.
@@ -176,9 +222,9 @@ export function mountWidget(deps: WidgetDeps): TransportWidget {
     chev,
   ]);
 
-  const sd = toggleRow(doc, "Stream Deck");
+  const sd = toggleRow(doc, "Stream Deck", true);
   const dev = toggleRow(doc, "Dev-bridge");
-  const midi = toggleRow(doc, "MIDI");
+  const midi = toggleRow(doc, "MIDI", true);
   const midiList = el(doc, "div", { className: "midiList" });
 
   const body = el(doc, "div", { className: "body" }, [sd.row, dev.row, midi.row, midiList]);
@@ -237,6 +283,23 @@ export function mountWidget(deps: WidgetDeps): TransportWidget {
     const onCount = (config.ws.enabled ? 1 : 0) + (config.midi.enabled ? 1 : 0);
     badge.textContent = `${onCount} on`;
 
+    // Live dots on the two real transport rows, keyed off both the config
+    // (enabled?) and the status feed (active?). A key is absent from the snapshot
+    // unless that transport is live, so `?? false` reads a not-yet-connected
+    // transport as not-active (amber, not green). The collapsed pill tints amber
+    // (`.warn`) when any enabled transport is inactive, surfacing a problem
+    // without unfolding.
+    const status = statusSource.snapshot();
+    const wsStale = config.ws.enabled && status.ws !== true;
+    const midiStale = config.midi.enabled && status.midi !== true;
+    if (sd.dot) {
+      paintDot(sd.dot, config.ws.enabled, status.ws ?? false);
+    }
+    if (midi.dot) {
+      paintDot(midi.dot, config.midi.enabled, status.midi ?? false);
+    }
+    card.classList.toggle("warn", wsStale || midiStale);
+
     // Rebuild the checklist from the connected inputs; disabled (greyed) while
     // MIDI itself is off, since selecting devices for a dead transport is moot.
     midiCheckboxes.clear();
@@ -278,6 +341,9 @@ export function mountWidget(deps: WidgetDeps): TransportWidget {
   // A hotplug changes which inputs the checklist shows.
   const unsubscribeMidi = source.subscribe(paint);
 
+  // A transport connecting/dropping (or being enabled/disabled) repaints the dots.
+  const unsubscribeStatus = statusSource.subscribe(paint);
+
   // Re-append the host if Meet ever detaches it (a re-render / <body> swap).
   // Coalesced to one guard per microtask, like model.ts's rescan.
   const attach = (): void => {
@@ -310,6 +376,7 @@ export function mountWidget(deps: WidgetDeps): TransportWidget {
       observer.disconnect();
       deps.onChanged.removeListener(onStorage);
       unsubscribeMidi();
+      unsubscribeStatus();
       host.remove();
     },
   };

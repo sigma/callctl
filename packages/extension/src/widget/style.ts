@@ -11,6 +11,7 @@ export const WIDGET_STYLE = `
     --border: #3c4043;
     --on: #34a853;
     --off: #5f6368;
+    --amber: #fbbc04;
     --text: #e8eaed;
     --text-dim: #9aa0a6;
     --radius: 12px;
@@ -50,6 +51,15 @@ export const WIDGET_STYLE = `
   .row .lbl small { display: block; color: var(--text-dim); font-size: 11px; }
 
   .badge { font-size: 10px; padding: 1px 6px; border-radius: 999px; background: #3c4043; color: var(--text-dim); }
+  /* amber pill: any enabled transport is not active — surfaced on the collapsed
+     pill (folded), where the per-row dots aren't visible to convey it */
+  .card.folded.warn .badge { background: var(--amber); color: #202124; }
+
+  /* per-row live dot: green = active, amber = enabled but not connected, hidden = off */
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .dot.hidden { display: none; }
+  .dot.live { background: var(--on); }
+  .dot.stale { background: var(--amber); }
 
   .midiList { margin: 4px 0 0 0; padding: 8px 10px; background: rgba(0,0,0,.25); border-radius: 8px; }
   .midiList label { display: flex; align-items: center; gap: 8px; padding: 3px 0; color: var(--text-dim); cursor: pointer; }

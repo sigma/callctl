@@ -90,7 +90,18 @@ function init(
     // checklist wants the connected inputs — hand it Web MIDI access, or an
     // empty source if the browser denies/omits it, so the widget still mounts.
     const midiSource = await webMidiInputSource().catch(() => NO_MIDI_INPUTS);
-    mountWidget({ local, onChanged, midi: midiSource });
+    // Hand the widget a *narrow* read-only status port, not the registry itself
+    // (#23): it can read liveness but has no enable/disable/retarget handle, so
+    // the widget stays a pure config writer.
+    mountWidget({
+      local,
+      onChanged,
+      midi: midiSource,
+      status: {
+        snapshot: () => registry.snapshot(),
+        subscribe: (onChange) => registry.subscribe(onChange),
+      },
+    });
   });
 }
 
