@@ -1,7 +1,13 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { currentInstance, displayHorizon, parseFeed, selectMeetings } from "./engine.js";
+import {
+  applyDismissal,
+  currentInstance,
+  displayHorizon,
+  parseFeed,
+  selectMeetings,
+} from "./engine.js";
 import type { MeetingInstance } from "./types.js";
 
 // Resolve fixtures from the package cwd (vitest runs in packages/plugin) rather
@@ -213,5 +219,80 @@ describe("currentInstance — boundary advance (§9)", () => {
     const justEnded = span(-30, 0, "JustEnded"); // end === base
     const next = span(5, 35, "Next");
     expect(currentInstance([justEnded, next], 0, base)?.title).toBe("Next");
+  });
+});
+
+describe("applyDismissal — late-state dismissal (§10)", () => {
+  const base = new Date(2026, 5, 15, 12, 0, 0);
+  /** A tier-(a) gmeet instance spanning `[startMin, endMin]` with a given code. */
+  const meet = (startMin: number, endMin: number, code: string, title = "x"): MeetingInstance => ({
+    start: new Date(base.getTime() + startMin * 60_000),
+    end: new Date(base.getTime() + endMin * 60_000),
+    allDay: false,
+    title,
+    sourceFeedId: "f",
+    candidate: { tier: "a", provider: "gmeet", code, joinUrl: "https://meet.google.com/x" },
+  });
+  /** A tier-(b) instance (no code — can only be grace-dismissed). */
+  const tierB = (startMin: number, endMin: number, title = "x"): MeetingInstance => ({
+    start: new Date(base.getTime() + startMin * 60_000),
+    end: new Date(base.getTime() + endMin * 60_000),
+    allDay: false,
+    title,
+    sourceFeedId: "f",
+    candidate: { tier: "b" },
+  });
+
+  it("keeps a still-upcoming or freshly-late event with no join proof", () => {
+    const soon = meet(5, 35, "gmeet:aaa-bbbb-ccc", "Soon"); // starts in 5m
+    const late = meet(-3, 27, "gmeet:ddd-eeee-fff", "Late"); // 3m past start, within grace
+    const kept = applyDismissal([late, soon], base, 10, null);
+    expect(kept.map((i) => i.title)).toEqual(["Late", "Soon"]);
+  });
+
+  it("grace fallback dismisses once start + graceMinutes has passed", () => {
+    const overGrace = meet(-11, 19, "gmeet:aaa-bbbb-ccc", "OverGrace"); // 11m past start, grace 10
+    const next = meet(20, 50, "gmeet:ddd-eeee-fff", "Next");
+    const kept = applyDismissal([overGrace, next], base, 10, null);
+    expect(kept.map((i) => i.title)).toEqual(["Next"]);
+  });
+
+  it("grace boundary is exclusive-of-now at exactly start + grace", () => {
+    const atGrace = meet(-10, 20, "gmeet:aaa-bbbb-ccc", "AtGrace"); // start + 10m === now
+    expect(applyDismissal([atGrace], base, 10, null)).toEqual([]);
+  });
+
+  it("join proof dismisses the matched event and advances to the next", () => {
+    const joined = meet(-2, 28, "gmeet:aaa-bbbb-ccc", "Joined");
+    const next = meet(30, 60, "gmeet:ddd-eeee-fff", "Next");
+    const kept = applyDismissal([joined, next], base, 10, "gmeet:aaa-bbbb-ccc");
+    expect(kept.map((i) => i.title)).toEqual(["Next"]);
+  });
+
+  it("windowed match skips past everything up to and including a later join (skip-ahead to N+1)", () => {
+    const skipped = meet(-5, 25, "gmeet:aaa-bbbb-ccc", "Skipped"); // never joined
+    const joined = meet(-1, 29, "gmeet:ddd-eeee-fff", "Joined"); // joined N+1 directly
+    const after = meet(40, 70, "gmeet:ggg-hhhh-iii", "After");
+    const kept = applyDismissal([skipped, joined, after], base, 30, "gmeet:ddd-eeee-fff");
+    // Both the skipped and the joined event drop out; the key advances to "After".
+    expect(kept.map((i) => i.title)).toEqual(["After"]);
+  });
+
+  it("matches the join key case-insensitively", () => {
+    const joined = meet(-1, 29, "gmeet:aaa-bbbb-ccc", "Joined");
+    expect(applyDismissal([joined], base, 30, "GMEET:AAA-BBBB-CCC")).toEqual([]);
+  });
+
+  it("a tier-(b) event never matches a join key (only grace can dismiss it)", () => {
+    const b = tierB(-1, 29, "TierB");
+    // Not join-dismissed (no code) and within grace ⇒ still surfaced.
+    expect(applyDismissal([b], base, 30, "gmeet:aaa-bbbb-ccc").map((i) => i.title)).toEqual([
+      "TierB",
+    ]);
+  });
+
+  it("null join key leaves the grace path as the only dismissal (extension absent)", () => {
+    const late = meet(-3, 27, "gmeet:aaa-bbbb-ccc", "Late");
+    expect(applyDismissal([late], base, 10, null).map((i) => i.title)).toEqual(["Late"]);
   });
 });

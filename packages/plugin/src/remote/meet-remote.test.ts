@@ -125,6 +125,34 @@ describe("MeetRemote", () => {
     await eventually(() => remote.micState() === true);
   });
 
+  it("caches the §10 join key from callState and clears it on leave", async () => {
+    const ext = new FakeExtension();
+    await ext.connect(port());
+    await eventually(() => remote.connected);
+
+    expect(remote.joinedKey()).toBeNull(); // no proof before any push
+
+    ext.send(StateEvent.CallState, "gmeet:abc-def-ghi");
+    await eventually(() => remote.joinedKey() === "gmeet:abc-def-ghi");
+
+    // "Not in a call" arrives with no data → back to null.
+    ext.send(StateEvent.CallState);
+    await eventually(() => remote.joinedKey() === null);
+  });
+
+  it("drops the join key when the extension disconnects", async () => {
+    const ext = new FakeExtension();
+    await ext.connect(port());
+    await eventually(() => remote.connected);
+
+    ext.send(StateEvent.CallState, "gmeet:abc-def-ghi");
+    await eventually(() => remote.joinedKey() === "gmeet:abc-def-ghi");
+
+    ext.close();
+    // A stale key must not keep dismissing the late state once we lose detection.
+    await eventually(() => !remote.connected && remote.joinedKey() === null);
+  });
+
   it("sends commands to the connected extension", async () => {
     const ext = new FakeExtension();
     await ext.connect(port());

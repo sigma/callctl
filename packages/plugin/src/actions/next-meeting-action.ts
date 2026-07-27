@@ -7,7 +7,7 @@ import {
   type WillDisappearEvent,
 } from "@elgato/streamdeck";
 
-import { currentInstance } from "../calendar/engine.js";
+import { applyDismissal, currentInstance } from "../calendar/engine.js";
 import { computeFace } from "../calendar/face.js";
 import { renderFaceSvg } from "../calendar/render.js";
 import type { CalendarService } from "../calendar/service.js";
@@ -42,6 +42,14 @@ export interface NextMeetingDeps {
   openWith?: (url: string, target: OpenTarget) => Promise<void>;
   /** Structured log sink; the plugin wires `streamDeck.logger`. Never receives a URL. */
   log?: (message: string) => void;
+  /**
+   * Optional §10 join-detection reader — the plugin wires `MeetRemote.joinedKey`.
+   * Returns the provider-namespaced code of the call you are *in* (e.g.
+   * `"gmeet:abc-def-ghi"`) or `null`. A windowed match dismisses the late state
+   * and advances the key. Defaults to always-`null` (extension absent → the
+   * §10 grace-timer fallback is the only dismissal path, exactly as specified).
+   */
+  joinedKey?: () => string | null;
 }
 
 /**
@@ -69,6 +77,7 @@ export class NextMeetingAction extends SingletonAction {
   readonly #openUrl: (url: string) => Promise<void>;
   readonly #openWith: (url: string, target: OpenTarget) => Promise<void>;
   readonly #log: (message: string) => void;
+  readonly #joinedKey: () => string | null;
   readonly #keys = new Map<string, KeyEntry>();
   /**
    * Per-key `end` (ms) of the instance it last rendered — the boundary tripwire
@@ -90,6 +99,9 @@ export class NextMeetingAction extends SingletonAction {
     // Default openWith rejects so an unwired tier-2 open cleanly degrades to tier 1.
     this.#openWith = deps.openWith ?? (async () => Promise.reject(new Error("openWith not wired")));
     this.#log = deps.log ?? (() => {});
+    // No dep ⇒ the extension is absent: join-proof never fires and only the
+    // §10 grace-timer fallback dismisses the late state.
+    this.#joinedKey = deps.joinedKey ?? (() => null);
   }
 
   override onWillAppear(ev: WillAppearEvent): void {
@@ -140,11 +152,18 @@ export class NextMeetingAction extends SingletonAction {
     if (entry === undefined) return;
     const { settings } = entry;
 
+    const now = this.#now();
     const snapshot = settings.feedId === "" ? undefined : this.#service.snapshot(settings.feedId);
+    // Press opens the *surfaced* (post-§10-dismissal) event, never a dismissed
+    // late one. A press is not join-proof, so it never itself dismisses.
     const current =
       snapshot === undefined
         ? undefined
-        : currentInstance(snapshot.list, settings.offset, this.#now());
+        : currentInstance(
+            applyDismissal(snapshot.list, now, settings.graceMinutes, this.#joinedKey()),
+            settings.offset,
+            now,
+          );
 
     if (current === undefined) {
       // Nothing surfaced: never open a stale/previous URL (§7). Nudge to setup
@@ -278,7 +297,15 @@ export class NextMeetingAction extends SingletonAction {
 
     // No such feed (empty or dangling feedId) ⇒ unconfigured face (§8).
     const snapshot = settings.feedId === "" ? undefined : this.#service.snapshot(settings.feedId);
-    const list = snapshot?.list ?? [];
+    // Apply §10 late-state dismissal before both the boundary tripwire and the
+    // face: a joined (or grace-elapsed) meeting drops out of the view here, so
+    // the key advances to the next event and stops flashing late.
+    const list = applyDismissal(
+      snapshot?.list ?? [],
+      now,
+      settings.graceMinutes,
+      this.#joinedKey(),
+    );
 
     // Meeting-boundary crossing (§9): if the instance we last rendered has now
     // ended, the key advances (currentInstance skips it below) — force one poll

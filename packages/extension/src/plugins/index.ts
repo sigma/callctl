@@ -1,3 +1,4 @@
+import { newCallStatePlugin } from "./callstate-plugin.js";
 import { newCaptionsPlugin } from "./captions-plugin.js";
 import { newCorePlugin } from "./core-plugin.js";
 import { newDebugPlugin } from "./debug-plugin.js";
@@ -20,6 +21,8 @@ import { newSelectorsPlugin, type PersistSelectors } from "./selectors-plugin.js
 export function loadPlugins(opts: { persistSelectors?: PersistSelectors } = {}): MeetPlugin[] {
   const plugins = [
     newCorePlugin(),
+    // After core: chains core's `onConnect` for its own on-connect push (§10).
+    newCallStatePlugin(),
     newHandPlugin(),
     newCaptionsPlugin(),
     newReactPlugin(),

@@ -45,6 +45,15 @@ export const StateEvent = {
   MicState: "micState",
   HandState: "handState",
   CaptionsState: "captionsState",
+  /**
+   * Optional read-only join-detection signal (§10). `data` is the
+   * provider-namespaced canonical join code of the call you are *in* (e.g.
+   * `gmeet:abc-def-ghi`); the event with **no `data`** means "not in a call".
+   * The extension pushes it on transition (Leave-call button appears/disappears
+   * or the code changes) and on connect. Consumed by `NextMeetingAction` to
+   * dismiss the late state the instant you actually join — never drives Meet.
+   */
+  CallState: "callState",
   /** Full {@link SelectorConfig} JSON, pushed after get/set-selectors. */
   Selectors: "selectors",
 } as const;
