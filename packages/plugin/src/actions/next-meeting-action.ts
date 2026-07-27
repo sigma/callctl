@@ -1,6 +1,7 @@
 import {
   type DidReceiveSettingsEvent,
   type KeyAction,
+  type KeyDownEvent,
   SingletonAction,
   type WillAppearEvent,
   type WillDisappearEvent,
@@ -10,6 +11,7 @@ import { currentInstance } from "../calendar/engine.js";
 import { computeFace } from "../calendar/face.js";
 import { renderFaceSvg } from "../calendar/render.js";
 import type { CalendarService } from "../calendar/service.js";
+import type { MeetingInstance } from "../calendar/types.js";
 import { type NextMeetingSettings, parseKeySettings } from "../settings.js";
 
 /** How often the render clock repaints every appeared key (§9). */
@@ -19,6 +21,19 @@ const RENDER_TICK_MS = 500;
 interface KeyEntry {
   action: KeyAction;
   settings: NextMeetingSettings;
+}
+
+/** Injectable side-effects (§7), kept out of the class so it stays vitest-testable. */
+export interface NextMeetingDeps {
+  now?: () => Date;
+  /**
+   * Host-delegated URL open (§7 tier 1) — the plugin wires
+   * `streamDeck.system.openUrl`. Fire-and-forget: resolves when the request is
+   * *sent to the host*, not when the browser opens.
+   */
+  openUrl?: (url: string) => Promise<void>;
+  /** Structured log sink; the plugin wires `streamDeck.logger`. Never receives a URL. */
+  log?: (message: string) => void;
 }
 
 /**
@@ -34,13 +49,17 @@ interface KeyEntry {
  * is only the SDK wiring: timers, settings, and `setImage` (mirrors the
  * `MeetRemote` split called for in #58).
  *
- * Scope note (#58): baseline non-escalating display only. Press-to-open,
- * escalation colours, blink/flash and boundary advance are #59 — hence no
- * `onKeyDown` here yet (a press is currently a no-op).
+ * The §8 escalation lives in {@link computeFace}/{@link renderFaceSvg}; this
+ * class adds the §9 boundary tripwire (a confirming poll when the current
+ * meeting ends) and the §7 press-to-open handler ({@link onKeyDown}). The open
+ * itself is an injected {@link NextMeetingDeps.openUrl} so the class carries no
+ * SDK singleton and stays fully unit-testable.
  */
 export class NextMeetingAction extends SingletonAction {
   readonly #service: CalendarService;
   readonly #now: () => Date;
+  readonly #openUrl: (url: string) => Promise<void>;
+  readonly #log: (message: string) => void;
   readonly #keys = new Map<string, KeyEntry>();
   /**
    * Per-key `end` (ms) of the instance it last rendered — the boundary tripwire
@@ -51,12 +70,15 @@ export class NextMeetingAction extends SingletonAction {
   #renderTimer: ReturnType<typeof setInterval> | undefined;
   #pollTimer: ReturnType<typeof setTimeout> | undefined;
 
-  constructor(uuid: string, service: CalendarService, opts: { now?: () => Date } = {}) {
+  constructor(uuid: string, service: CalendarService, deps: NextMeetingDeps = {}) {
     super();
     // A single class serving one UUID; set manifestId here as the other actions do.
     (this as { manifestId: string }).manifestId = uuid;
     this.#service = service;
-    this.#now = opts.now ?? (() => new Date());
+    this.#now = deps.now ?? (() => new Date());
+    // Default openUrl is a safe no-op — the plugin wires the real host open.
+    this.#openUrl = deps.openUrl ?? (async () => {});
+    this.#log = deps.log ?? (() => {});
   }
 
   override onWillAppear(ev: WillAppearEvent): void {
@@ -83,6 +105,65 @@ export class NextMeetingAction extends SingletonAction {
     // A changed feed is a forced-poll trigger (§9 "config URL changed").
     if (prev?.settings.feedId !== next.feedId) this.#forcePoll(ev.action.id, next.feedId);
     this.#paintKey(ev.action.id);
+  }
+
+  /**
+   * Press → open (§7 tier 1). Opens the surfaced event's target in the default
+   * browser via the host-delegated {@link NextMeetingDeps.openUrl}:
+   *
+   * - **tier (a)** → the canonicalized `joinUrl` (§6.3), reconstructed & safe.
+   * - **tier (b)** → the feed-derived calendar fallback (§6.4), never the
+   *   event's untrusted `URL`.
+   * - **no surfaced event** (Free / unconfigured / error / loading) → a safe
+   *   no-op that never opens a stale URL: `showAlert` for a config gap,
+   *   `showOk` between meetings.
+   *
+   * The open is **fire-and-forget** (`.catch` + log only) so a rejected request
+   * never escapes the key handler (§7). Tier-2 browser-profile targeting is #61.
+   */
+  override onKeyDown(ev: KeyDownEvent): void {
+    if (!ev.action.isKey()) return;
+    const entry = this.#keys.get(ev.action.id);
+    if (entry === undefined) return;
+    const { settings } = entry;
+
+    const snapshot = settings.feedId === "" ? undefined : this.#service.snapshot(settings.feedId);
+    const current =
+      snapshot === undefined
+        ? undefined
+        : currentInstance(snapshot.list, settings.offset, this.#now());
+
+    if (current === undefined) {
+      // Nothing surfaced: never open a stale/previous URL (§7). Nudge to setup
+      // when the feed is missing; acknowledge an idle "Free" press otherwise.
+      if (snapshot === undefined) void ev.action.showAlert();
+      else void ev.action.showOk();
+      return;
+    }
+
+    const target = this.#openTarget(current.candidate, settings.feedId);
+    if (target === undefined) {
+      // Tier-(b) event but no derivable fallback (unparseable feed origin) —
+      // safe no-op, flag it rather than open nothing silently.
+      void ev.action.showAlert();
+      return;
+    }
+    // Fire-and-forget host open — resolves when *sent*, not when the browser
+    // opens; a rejection is logged, never thrown out of the handler (§7).
+    void this.#openUrl(target).catch((err) =>
+      this.#log(
+        `next-meeting: openUrl failed: ${err instanceof Error ? err.message : String(err)}`,
+      ),
+    );
+  }
+
+  /**
+   * The URL a press should open for a surfaced event (§7): the canonicalized
+   * `joinUrl` for tier (a), else the feed-derived calendar fallback for tier (b).
+   */
+  #openTarget(candidate: MeetingInstance["candidate"], feedId: string): string | undefined {
+    if (candidate.tier === "a") return candidate.joinUrl;
+    return this.#service.calendarFallback(feedId);
   }
 
   // ---- clocks ------------------------------------------------------------

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fetchFeed, normalizeFeedUrl } from "./fetch.js";
+import { calendarFallbackUrl, fetchFeed, normalizeFeedUrl } from "./fetch.js";
 
 const SECRET = "https://calendar.example.com/private-abcSECRETxyz/basic.ics";
 
@@ -39,6 +39,32 @@ describe("normalizeFeedUrl (§4 scheme rewrite)", () => {
     } catch (e) {
       expect((e as Error).message).not.toContain("secret");
     }
+  });
+});
+
+describe("calendarFallbackUrl (§6.4 tier-b feed-derived fallback)", () => {
+  it("derives the feed's origin, dropping the secret path & query", () => {
+    expect(
+      calendarFallbackUrl("https://calendar.google.com/calendar/ical/SECRET123/basic.ics"),
+    ).toBe("https://calendar.google.com");
+  });
+  it("rewrites webcal(s) before taking the origin", () => {
+    expect(calendarFallbackUrl("webcal://p12.calendar.example/S3CR3T/feed.ics")).toBe(
+      "https://p12.calendar.example",
+    );
+  });
+  it("keeps a non-standard port in the origin", () => {
+    expect(calendarFallbackUrl("https://host.example:8443/s/feed.ics")).toBe(
+      "https://host.example:8443",
+    );
+  });
+  it("never leaks the secret path into the derived URL", () => {
+    const out = calendarFallbackUrl("https://cal.example/ical/SUPERSECRETTOKEN/basic.ics");
+    expect(out).not.toContain("SUPERSECRETTOKEN");
+  });
+  it("returns undefined for an unparseable or non-http(s) feed URL", () => {
+    expect(calendarFallbackUrl("not a url")).toBeUndefined();
+    expect(calendarFallbackUrl("mailto:a@b.com")).toBeUndefined();
   });
 });
 

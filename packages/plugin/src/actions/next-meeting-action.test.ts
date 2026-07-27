@@ -5,7 +5,11 @@ import type { FeedSnapshot, MeetingInstance } from "../calendar/types.js";
 import { NextMeetingAction } from "./next-meeting-action.js";
 
 /** A tier-(a) instance spanning `[startMs, endMs]` (absolute epoch ms). */
-function instance(startMs: number, endMs: number, over: Partial<MeetingInstance> = {}): MeetingInstance {
+function instance(
+  startMs: number,
+  endMs: number,
+  over: Partial<MeetingInstance> = {},
+): MeetingInstance {
   return {
     start: new Date(startMs),
     end: new Date(endMs),
@@ -53,6 +57,10 @@ const appearEv = (action: unknown, settings: Record<string, unknown>): any => ({
   action,
   payload: { settings },
 });
+// biome-ignore lint/suspicious/noExplicitAny: fake SDK events are structurally typed for the handlers.
+const keyDownEv = (action: unknown): any => ({ action });
+// biome-ignore lint/suspicious/noExplicitAny: fake SDK events are structurally typed for the handlers.
+const disappearEv = (action: { id: string }): any => ({ action });
 
 describe("NextMeetingAction — meeting-boundary advance (§9)", () => {
   let clock = 0;
@@ -70,7 +78,10 @@ describe("NextMeetingAction — meeting-boundary advance (§9)", () => {
     // A meeting ending at t=1000; the next runs later.
     const snapshot: FeedSnapshot = {
       status: "ok",
-      list: [instance(-60_000, 1_000, { title: "Running" }), instance(30_000, 60_000, { title: "Next" })],
+      list: [
+        instance(-60_000, 1_000, { title: "Running" }),
+        instance(30_000, 60_000, { title: "Next" }),
+      ],
     };
     const service = fakeService({ snapshot });
     const action = new NextMeetingAction("uuid", service, { now });
@@ -95,7 +106,10 @@ describe("NextMeetingAction — meeting-boundary advance (§9)", () => {
   it("does not re-poll on every tick after a single boundary crossing", () => {
     const snapshot: FeedSnapshot = {
       status: "ok",
-      list: [instance(-60_000, 1_000, { title: "Running" }), instance(30_000, 60_000, { title: "Next" })],
+      list: [
+        instance(-60_000, 1_000, { title: "Running" }),
+        instance(30_000, 60_000, { title: "Next" }),
+      ],
     };
     const service = fakeService({ snapshot });
     const action = new NextMeetingAction("uuid", service, { now });
@@ -108,5 +122,104 @@ describe("NextMeetingAction — meeting-boundary advance (§9)", () => {
     clock = 2_500;
     vi.advanceTimersByTime(500);
     expect(service.poll).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("NextMeetingAction — press → open (§7)", () => {
+  const NOW = 1_000;
+  const now = () => new Date(NOW);
+  /** A currently-surfaced instance (started, still running) at `NOW`. */
+  const surfaced = (over: Partial<MeetingInstance> = {}) => instance(0, 60_000, over);
+
+  /** Appear a key, run `body`, then disappear it so the render interval is cleared. */
+  function withKey(
+    service: CalendarService,
+    deps: { openUrl?: (u: string) => Promise<void>; log?: (m: string) => void },
+    settings: Record<string, unknown>,
+    body: (action: NextMeetingAction, key: ReturnType<typeof fakeKey>) => void,
+  ): void {
+    vi.useFakeTimers();
+    try {
+      const action = new NextMeetingAction("uuid", service, { now, ...deps });
+      const key = fakeKey("k1");
+      action.onWillAppear(appearEv(key, settings));
+      body(action, key);
+      action.onWillDisappear(disappearEv(key));
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
+  it("opens the canonicalized joinUrl for a tier-(a) event", () => {
+    const service = fakeService({ snapshot: { status: "ok", list: [surfaced()] } });
+    const openUrl = vi.fn(async () => {});
+    withKey(service, { openUrl }, { feedId: "work", offset: 0 }, (action, key) => {
+      action.onKeyDown(keyDownEv(key));
+      expect(openUrl).toHaveBeenCalledWith("https://meet.google.com/abc-def-ghi");
+      expect(key.showAlert).not.toHaveBeenCalled();
+    });
+  });
+
+  it("opens the feed-derived calendar fallback for a tier-(b) event", () => {
+    const service = fakeService({
+      snapshot: { status: "ok", list: [surfaced({ candidate: { tier: "b" } })] },
+      fallback: "https://calendar.google.com",
+    });
+    const openUrl = vi.fn(async () => {});
+    withKey(service, { openUrl }, { feedId: "work", offset: 0 }, (action, key) => {
+      action.onKeyDown(keyDownEv(key));
+      expect(openUrl).toHaveBeenCalledWith("https://calendar.google.com");
+      expect(service.calendarFallback).toHaveBeenCalledWith("work");
+    });
+  });
+
+  it("is a safe no-op (showAlert, no open) for a tier-(b) event with no derivable fallback", () => {
+    const service = fakeService({
+      snapshot: { status: "ok", list: [surfaced({ candidate: { tier: "b" } })] },
+      fallback: undefined,
+    });
+    const openUrl = vi.fn(async () => {});
+    withKey(service, { openUrl }, { feedId: "work", offset: 0 }, (action, key) => {
+      action.onKeyDown(keyDownEv(key));
+      expect(openUrl).not.toHaveBeenCalled();
+      expect(key.showAlert).toHaveBeenCalled();
+    });
+  });
+
+  it("acknowledges an idle Free press without opening anything", () => {
+    const service = fakeService({ snapshot: { status: "ok", list: [] } });
+    const openUrl = vi.fn(async () => {});
+    withKey(service, { openUrl }, { feedId: "work", offset: 0 }, (action, key) => {
+      action.onKeyDown(keyDownEv(key));
+      expect(openUrl).not.toHaveBeenCalled();
+      expect(key.showOk).toHaveBeenCalled();
+    });
+  });
+
+  it("nudges to setup (showAlert, no open) when the feed is unconfigured", () => {
+    const service = fakeService({ snapshot: undefined });
+    const openUrl = vi.fn(async () => {});
+    withKey(service, { openUrl }, { feedId: "", offset: 0 }, (action, key) => {
+      action.onKeyDown(keyDownEv(key));
+      expect(openUrl).not.toHaveBeenCalled();
+      expect(key.showAlert).toHaveBeenCalled();
+    });
+  });
+
+  it("is fire-and-forget: a rejected open is logged, never thrown", async () => {
+    const service = fakeService({ snapshot: { status: "ok", list: [surfaced()] } });
+    const openUrl = vi.fn(async () => {
+      throw new Error("host refused");
+    });
+    const log = vi.fn();
+    const action = new NextMeetingAction("uuid", service, { now, openUrl, log });
+    const key = fakeKey("k1");
+    action.onWillAppear(appearEv(key, { feedId: "work", offset: 0 }));
+    // Synchronous handler must not throw even though the open rejects.
+    expect(() => action.onKeyDown(keyDownEv(key))).not.toThrow();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("host refused"));
+    action.onWillDisappear(disappearEv(key));
   });
 });

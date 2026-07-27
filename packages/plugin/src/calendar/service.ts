@@ -13,7 +13,7 @@
 
 import type { GlobalSettings } from "../settings.js";
 import { parseFeed, selectMeetings } from "./engine.js";
-import { type FeedValidators, fetchFeed } from "./fetch.js";
+import { calendarFallbackUrl, type FeedValidators, fetchFeed } from "./fetch.js";
 import type { FeedSnapshot, FeedStatus, MeetingInstance } from "./types.js";
 
 /** Per-poll options, forwarded to {@link fetchFeed}; the fake `fetch` rides here in tests. */
@@ -59,6 +59,11 @@ class FeedCache {
 
   snapshot(): FeedSnapshot {
     return { list: this.#list, status: this.#status };
+  }
+
+  /** This feed's secret URL — read only to derive the tier-(b) origin (§6.4). */
+  get url(): string {
+    return this.#url;
   }
 
   poll(now: Date, opts: PollOptions): Promise<void> {
@@ -157,6 +162,17 @@ export class CalendarService {
    */
   snapshot(feedId: string): FeedSnapshot | undefined {
     return this.#feeds.get(feedId)?.snapshot();
+  }
+
+  /**
+   * The tier-(b) feed-derived calendar fallback URL for a feed (§6.4) — the
+   * feed's own origin, safe to open (the secret path never leaves this class).
+   * `undefined` for an unknown feed or an unparseable URL, which the opener
+   * treats as "nothing safe to open" (§7).
+   */
+  calendarFallback(feedId: string): string | undefined {
+    const url = this.#feeds.get(feedId)?.url;
+    return url === undefined ? undefined : calendarFallbackUrl(url);
   }
 
   /** Force one conditional-GET poll of a single feed. No-op for an unknown feed. */

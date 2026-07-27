@@ -83,6 +83,23 @@ export function normalizeFeedUrl(raw: string): string {
 }
 
 /**
+ * The tier-(b) **feed-derived calendar fallback** (§6.4): a trusted calendar-home
+ * URL derived purely from the feed's own **origin** — the host the user chose by
+ * subscribing. Only the scheme + host survive; the secret path/query never leak
+ * into the opened URL, so this is safe to hand to `openUrl`. Needs no new config.
+ *
+ * `undefined` when the feed URL is unparseable or not `http(s)`/`webcal(s)` —
+ * the opener then has nothing safe to open and the press is a no-op (§7).
+ */
+export function calendarFallbackUrl(feedUrl: string): string | undefined {
+  try {
+    return new URL(normalizeFeedUrl(feedUrl)).origin;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Perform one conditional GET against a feed (§4).
  *
  * - Rewrites `webcal` → `https`; a bad scheme returns `error: "scheme"`.
