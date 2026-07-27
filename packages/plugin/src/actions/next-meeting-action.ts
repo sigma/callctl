@@ -6,6 +6,7 @@ import {
   type WillDisappearEvent,
 } from "@elgato/streamdeck";
 
+import { currentInstance } from "../calendar/engine.js";
 import { computeFace } from "../calendar/face.js";
 import { renderFaceSvg } from "../calendar/render.js";
 import type { CalendarService } from "../calendar/service.js";
@@ -41,6 +42,12 @@ export class NextMeetingAction extends SingletonAction {
   readonly #service: CalendarService;
   readonly #now: () => Date;
   readonly #keys = new Map<string, KeyEntry>();
+  /**
+   * Per-key `end` (ms) of the instance it last rendered — the boundary tripwire
+   * (§9). When `now` passes it, that meeting ended: the key advances (via
+   * {@link currentInstance}) and we force one confirming poll.
+   */
+  readonly #currentEnd = new Map<string, number>();
   #renderTimer: ReturnType<typeof setInterval> | undefined;
   #pollTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -64,6 +71,7 @@ export class NextMeetingAction extends SingletonAction {
 
   override onWillDisappear(ev: WillDisappearEvent): void {
     this.#keys.delete(ev.action.id);
+    this.#currentEnd.delete(ev.action.id);
     if (this.#keys.size === 0) this.#stopClocks();
   }
 
@@ -140,15 +148,30 @@ export class NextMeetingAction extends SingletonAction {
     const entry = this.#keys.get(id);
     if (entry === undefined) return;
     const { action, settings } = entry;
+    const now = this.#now();
 
     // No such feed (empty or dangling feedId) ⇒ unconfigured face (§8).
     const snapshot = settings.feedId === "" ? undefined : this.#service.snapshot(settings.feedId);
+    const list = snapshot?.list ?? [];
+
+    // Meeting-boundary crossing (§9): if the instance we last rendered has now
+    // ended, the key advances (currentInstance skips it below) — force one poll
+    // to confirm the new head is real. `#currentEnd` gates it to a single fire.
+    const prevEnd = this.#currentEnd.get(id);
+    if (prevEnd !== undefined && now.getTime() >= prevEnd) {
+      this.#currentEnd.delete(id);
+      this.#forcePoll(id, settings.feedId);
+    }
+    const current = currentInstance(list, settings.offset, now);
+    if (current !== undefined) this.#currentEnd.set(id, current.end.getTime());
+    else this.#currentEnd.delete(id);
+
     const face = computeFace({
       configured: snapshot !== undefined,
       status: snapshot?.status ?? "loading",
-      list: snapshot?.list ?? [],
+      list,
       offset: settings.offset,
-      now: this.#now(),
+      now,
     });
     void action.setImage(renderFaceSvg(face));
   }

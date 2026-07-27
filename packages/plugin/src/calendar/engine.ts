@@ -116,18 +116,43 @@ function isSameLocalDay(a: Date, b: Date): boolean {
 }
 
 /**
+ * The still-current-or-upcoming instance a key at `offset` points at *right now*
+ * (§9 meeting-boundary behavior). `selectMeetings` drops ended events only at
+ * **poll** time; between polls the cache is static, so the render clock must
+ * itself skip any instance whose `end` has since passed. Filtering `end > now`
+ * here is the boundary advance: as each event ends it falls out of the view and
+ * every key's `offset` shifts to the next element — the two-buttons-per-calendar
+ * keys "re-index the same list, shift together at each boundary" (§9). `offset`
+ * indexes into this filtered view, not the raw list.
+ *
+ * @param list    a {@link selectMeetings} result (ordered `start ↑ → end ↑ → uid`).
+ * @param offset  the key's index into the still-current view (§3; default 0).
+ * @param now     the reference instant (injected by the render clock).
+ */
+export function currentInstance(
+  list: MeetingInstance[],
+  offset: number,
+  now: Date,
+): MeetingInstance | undefined {
+  const nowMs = now.getTime();
+  return list.filter((i) => i.end.getTime() > nowMs)[offset];
+}
+
+/**
  * Classify what the key at `offset` should show, applying the today-only display
- * horizon (§5). The countdown only counts to an event **starting today**
- * (machine-local date); a future-day event yields a "Free" + hint face; no event
- * at that offset yields a plain "Free". The horizon rolls over at local midnight
- * because it is re-derived from `now` on every render tick.
+ * horizon (§5) over the still-current view ({@link currentInstance}, §9). The
+ * countdown only counts to an event **starting today** (machine-local date); a
+ * future-day event yields a "Free" + hint face; no still-current event at that
+ * offset yields a plain "Free". The horizon rolls over at local midnight and the
+ * boundary advances as events end, because both are re-derived from `now` on
+ * every render tick.
  *
  * @param list    a {@link selectMeetings} result (ordered).
- * @param offset  the key's index into the list (§3; default 0).
+ * @param offset  the key's index into the still-current view (§3; default 0).
  * @param now     the reference instant.
  */
 export function displayHorizon(list: MeetingInstance[], offset: number, now: Date): DisplayHorizon {
-  const instance = list[offset];
+  const instance = currentInstance(list, offset, now);
   if (!instance) return { kind: "none" };
   return isSameLocalDay(instance.start, now)
     ? { kind: "today", instance }
