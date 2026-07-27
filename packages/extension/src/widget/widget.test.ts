@@ -147,6 +147,22 @@ describe("mount + initial paint", () => {
     expect(midiChecks().map((b) => b.checked)).toEqual([true]);
   });
 
+  test("mounts collapsed to the compact pill", async () => {
+    const { local, onChanged } = fakeStorage({ config: defaultConfig(2395) });
+    mount({ local, onChanged });
+    await flush();
+    expect(card()?.classList.contains("folded")).toBe(true);
+  });
+
+  test("the header carries the emoji face and the Transports label", async () => {
+    const { local, onChanged } = fakeStorage({ config: defaultConfig(2395) });
+    mount({ local, onChanged });
+    await flush();
+    const head = shadow().querySelector(".head");
+    expect(head?.querySelector(".grip")?.textContent).toBe("🎛️");
+    expect(head?.querySelector("b")?.textContent).toBe("Transports");
+  });
+
   test("a disabled ws flag paints the Stream Deck toggle off", async () => {
     const config: TransportConfig = {
       ...defaultConfig(2395),
@@ -300,6 +316,30 @@ describe("live transport status dots + pill tint", () => {
 
     status.set({ ws: true, midi: true }); // all live now
     expect(card()?.classList.contains("warn")).toBe(false);
+  });
+});
+
+describe("meeting-only visibility", () => {
+  test("stays unmounted while visibleWhen is false, and toggles with it", async () => {
+    const { local, onChanged } = fakeStorage({ config: defaultConfig(2395) });
+    let inMeeting = false;
+    mount({ local, onChanged, visibleWhen: () => inMeeting });
+    await flush();
+    // On the landing page: no host at all.
+    expect(document.getElementById("callctl-widget-host")).toBeNull();
+
+    // Navigate into a room: any Meet re-render trips the survival observer,
+    // which re-reads visibleWhen and attaches the host.
+    inMeeting = true;
+    document.body.appendChild(document.createElement("div"));
+    await flush();
+    expect(document.getElementById("callctl-widget-host")?.isConnected).toBe(true);
+
+    // Navigate back out (leave the call): the next tick detaches it again.
+    inMeeting = false;
+    document.body.appendChild(document.createElement("div"));
+    await flush();
+    expect(document.getElementById("callctl-widget-host")).toBeNull();
   });
 });
 

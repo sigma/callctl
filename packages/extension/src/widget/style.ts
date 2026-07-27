@@ -31,15 +31,22 @@ export const WIDGET_STYLE = `
     border-bottom: 1px solid var(--border); cursor: pointer; user-select: none;
   }
   .head b { font-weight: 500; flex: 1; }
-  .grip { color: var(--text-dim); }
+  .grip { font-size: 15px; line-height: 1; }
   .chev { color: var(--text-dim); font-size: 11px; transition: transform .15s; }
   .body { padding: 6px 12px 12px; }
 
-  /* folded: shrink to a compact pill, header only */
-  .card.folded { width: auto; }
-  .card.folded .head { border-bottom: none; border-radius: var(--radius); padding: 8px 14px; }
-  .card.folded .grip { display: none; }
-  .card.folded .chev { transform: rotate(-90deg); }
+  /* folded: collapse to a compact rounded pill in Meet's own control language —
+     the emoji face + a count chip, no card chrome, no chevron. Sits alongside
+     Meet's People / participant pills rather than reading as a floating panel. */
+  .card.folded {
+    width: auto; border-radius: 999px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.3);
+  }
+  .card.folded .head {
+    border-bottom: none; border-radius: 999px; padding: 7px 14px; gap: 7px;
+  }
+  .card.folded .head b { display: none; }
+  .card.folded .chev { display: none; }
   .card.folded .body { display: none; }
 
   .row {
