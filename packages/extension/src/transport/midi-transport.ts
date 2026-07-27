@@ -1,16 +1,25 @@
 import type { Message } from "@callctl/protocol";
+import type { MidiDeviceRef, MidiDevices } from "../config.js";
 import type { MeetPlugin } from "../plugins/plugin.js";
-import { BaseTransport } from "./transport.js";
+import { BaseTransport, type Retargetable } from "./transport.js";
 
 /**
  * Web MIDI input transport. Descendant of the legacy `MidiProtocol`, now on
  * {@link BaseTransport} so it can be detached cleanly (handlers self-park their
  * removal and {@link close} unbinds the input callbacks).
  *
- * Unlike the websocket, MIDI is input-only: it never `send`s state back and has
- * no connection lifecycle to speak of — everything happens in the constructor,
- * which subscribes to every MIDI input device. Incoming Control-Change messages
- * are dispatched to plugin handlers by ordinal (see {@link onMidiMessage}).
+ * Unlike the websocket, MIDI is input-only: it never `send`s state back. But it
+ * is not fire-and-forget either — it binds only the **selected** input devices
+ * (the persisted `midi.devices` set, or `"all"`) and stays live as devices come
+ * and go: Web MIDI `statechange` (hotplug/unplug) triggers a
+ * {@link MidiTransport.reconcile | reconcile}, as does a live device re-select
+ * via {@link retarget}. Incoming Control-Change messages are dispatched to
+ * plugin handlers by ordinal (see {@link onMidiMessage}).
+ *
+ * The enable/disable lifecycle (issue #10) is the registry's: the master MIDI
+ * toggle off is `TransportRegistry.disable("midi")`, whose `detach` → `close`
+ * unbinds every input and drops the `statechange` listener, so a disabled
+ * transport holds no bindings at all.
  *
  * The dispatch mapping is quirky but preserved exactly:
  *  - the CC controller number selects the plugin **by its `ID()`**,
@@ -18,30 +27,79 @@ import { BaseTransport } from "./transport.js";
  *    registered (`handle()` call index),
  *  - the low nibble is passed through as the message `data`.
  */
-export class MidiTransport extends BaseTransport {
+export class MidiTransport extends BaseTransport implements Retargetable<MidiDevices> {
   #currentPlugin = 0;
   #currentOp = 0;
 
+  /** Which inputs to bind: `"all"`, or the persisted selected-device refs. */
+  #selection: MidiDevices;
+  /** The live MIDI access, once acquired; null before ready and after close. */
+  #access: MIDIAccess | null = null;
+
   /** plugin ID → (op ordinal → handler). */
   readonly midiMap = new Map<number, Map<number, (msg: Message) => void>>();
-  /** Inputs we bound a callback on, so {@link close} can unbind them. */
+  /** Inputs we currently have a callback bound on, so we can unbind them. */
   readonly #inputs = new Set<MIDIInput>();
 
-  constructor(nav: Navigator = navigator) {
+  constructor(selection: MidiDevices = "all", nav: Navigator = navigator) {
     super();
+    this.#selection = selection;
     nav
       .requestMIDIAccess()
       .then((midiAccess) => {
         console.log("MIDI Ready!");
-        for (const [, input] of midiAccess.inputs) {
-          console.log(`MIDI input device: ${input.id}`);
-          input.onmidimessage = (ev) => onMidiMessage(this, ev);
-          this.#inputs.add(input);
-        }
+        this.#access = midiAccess;
+        // Any hotplug/unplug re-runs the reconcile against the current inputs.
+        midiAccess.onstatechange = () => this.reconcile();
+        this.reconcile();
       })
       .catch(() => {
         console.log("Error accessing MIDI devices");
       });
+  }
+
+  /**
+   * Live device re-select: swap the selected set and re-bind. Cheap enough to
+   * run on every change — no teardown of installed plugins (see
+   * {@link Retargetable}).
+   */
+  retarget(selection: MidiDevices): void {
+    this.#selection = selection;
+    this.reconcile();
+  }
+
+  /**
+   * Bring the bound inputs in line with the current selection and the currently
+   * connected devices. Unbinds everything, then re-binds each connected input
+   * the selection covers — idempotent, so it is safe to call on ready, on
+   * hotplug/unplug, and on re-select. A no-op before access is acquired.
+   */
+  reconcile(): void {
+    if (this.#access === null) {
+      return;
+    }
+    for (const input of this.#inputs) {
+      input.onmidimessage = null;
+    }
+    this.#inputs.clear();
+
+    for (const [, input] of this.#access.inputs) {
+      // A disconnected port lingers in the map on some browsers; skip it.
+      if (input.state !== "connected" || !this.#selects(input)) {
+        continue;
+      }
+      console.log(`Binding MIDI input device: ${input.id}`);
+      input.onmidimessage = (ev) => onMidiMessage(this, ev);
+      this.#inputs.add(input);
+    }
+  }
+
+  /** Whether the current selection covers this input (id-primary, then name+mfr). */
+  #selects(input: MIDIInput): boolean {
+    if (this.#selection === "all") {
+      return true;
+    }
+    return this.#selection.some((ref) => matchesDevice(input, ref));
   }
 
   acceptPlugin(plugin: MeetPlugin): void {
@@ -68,12 +126,34 @@ export class MidiTransport extends BaseTransport {
   send(_message: Message): void {}
 
   protected close(): void {
+    if (this.#access !== null) {
+      this.#access.onstatechange = null;
+      this.#access = null;
+    }
     for (const input of this.#inputs) {
       input.onmidimessage = null;
     }
     this.#inputs.clear();
     this.midiMap.clear();
   }
+}
+
+/**
+ * Does a live input match a persisted device ref? Id-primary — the Web MIDI
+ * `MIDIInput.id` — with a name+manufacturer fallback, since the id is not stable
+ * across replugs (see issue #2). The fallback only fires when both fields are
+ * present, so two nameless inputs never collide.
+ */
+function matchesDevice(input: MIDIInput, ref: MidiDeviceRef): boolean {
+  if (input.id === ref.id) {
+    return true;
+  }
+  return (
+    input.name != null &&
+    input.manufacturer != null &&
+    input.name === ref.name &&
+    input.manufacturer === ref.manufacturer
+  );
 }
 
 function onMidiMessage(protocol: MidiTransport, ev: MIDIMessageEvent): void {

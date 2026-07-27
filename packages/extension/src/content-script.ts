@@ -1,5 +1,5 @@
 import type { SelectorConfig } from "@callctl/protocol";
-import { loadConfig, type TransportConfig, wsPort } from "./config.js";
+import { loadConfig, type MidiDevices, type TransportConfig, wsPort } from "./config.js";
 import { selectors } from "./meet/selectors.js";
 import { loadPlugins } from "./plugins/index.js";
 import { MidiTransport } from "./transport/midi-transport.js";
@@ -27,31 +27,46 @@ function init(
       persistSelectors: (config) => local.set({ selectors: config }),
     });
 
-    // The port (and, later, enable-flags) live in the versioned `config`
-    // envelope owned by `config.ts` (#7); `loadConfig` also migrates a legacy
-    // `{ port }` install on first read.
+    // The port and enable-flags live in the versioned `config` envelope owned by
+    // `config.ts` (#7); `loadConfig` also migrates a legacy `{ port }` install on
+    // first read.
     const config = await loadConfig(local);
 
     // The registry owns the fan-out (replacing the static `MultiProtocol`) and
-    // each transport's lifecycle. Enable WS + MIDI up front to preserve today's
-    // always-on behavior; the widget (#4) will drive enable/disable from the
-    // persisted `config.*.enabled` flags later.
+    // each transport's lifecycle. WS dials the effective `wsPort` (plugin port,
+    // or the dev-bridge proxy when that's on, #6); MIDI is config-driven (#5):
+    // bound only when enabled, and only to the selected device set. Defaults
+    // (ws on, MIDI on / `"all"`) preserve today's always-on behavior.
     const registry = new TransportRegistry(plugins);
     registry.enable(TransportId.WS, () => new WSTransport(wsPort(config)));
-    registry.enable(TransportId.MIDI, () => new MidiTransport());
+    if (config.midi.enabled) {
+      registry.enable(TransportId.MIDI, () => new MidiTransport(config.midi.devices));
+    }
 
-    // A `config` change is now a live retarget: the ws redials with its plugins
-    // intact, no tab reload. `wsPort` folds two live switches into one target —
-    // a plugin-port edit (Options page, #7) and the dev-bridge toggle (#6, which
-    // re-points the client at the bridge's proxy port). The Options page writes
-    // the whole `config` envelope, so we react to that key and retarget to the
-    // current effective port — `retarget` no-ops if it's unchanged.
+    // The Options page / widget writes the whole `config` envelope; we react to
+    // that one key and apply each transport's changes live, no tab reload:
+    //  - ws port change (#7) / dev-bridge toggle (#6) → live `retarget` to the
+    //    effective `wsPort` (redial, plugins intact; no-ops if unchanged),
+    //  - MIDI master toggle (#5) → enable/disable (build/detach the transport),
+    //  - MIDI device re-select (#5) → live `retarget` (re-bind the inputs).
     onChanged.addListener((changes, areaName) => {
-      if (areaName === "local" && "config" in changes) {
-        const next = changes.config.newValue as TransportConfig | undefined;
-        if (next !== undefined) {
-          registry.retarget<number>(TransportId.WS, wsPort(next));
-        }
+      if (areaName !== "local" || !("config" in changes)) {
+        return;
+      }
+      const next = changes.config.newValue as TransportConfig | undefined;
+      if (next === undefined) {
+        return;
+      }
+
+      registry.retarget<number>(TransportId.WS, wsPort(next));
+
+      if (next.midi.enabled) {
+        // `enable` is idempotent, so this both turns MIDI on and, when it was
+        // already live, leaves it for the following device-set `retarget`.
+        registry.enable(TransportId.MIDI, () => new MidiTransport(next.midi.devices));
+        registry.retarget<MidiDevices>(TransportId.MIDI, next.midi.devices);
+      } else {
+        registry.disable(TransportId.MIDI);
       }
     });
   });
