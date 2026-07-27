@@ -5,6 +5,7 @@ import {
   DEFAULT_DEV_BRIDGE_PORT,
   defaultConfig,
   loadConfig,
+  matchesMidiDevice,
   saveConfig,
   type TransportConfig,
   wsPort,
@@ -110,6 +111,27 @@ describe("wsPort", () => {
       },
     };
     expect(wsPort(config)).toBe(2396);
+  });
+});
+
+describe("matchesMidiDevice", () => {
+  const ref = { id: "abc", name: "APC mini", manufacturer: "Akai" };
+
+  test("matches on id first, whatever the name/manufacturer", () => {
+    expect(matchesMidiDevice({ id: "abc", name: "renamed", manufacturer: "x" }, ref)).toBe(true);
+  });
+
+  test("falls back to name+manufacturer when the id has drifted", () => {
+    expect(matchesMidiDevice({ id: "new-id", name: "APC mini", manufacturer: "Akai" }, ref)).toBe(
+      true,
+    );
+  });
+
+  test("does not match on a partial fallback or when fields are absent", () => {
+    expect(matchesMidiDevice({ id: "x", name: "APC mini", manufacturer: "Other" }, ref)).toBe(
+      false,
+    );
+    expect(matchesMidiDevice({ id: "x", name: null, manufacturer: null }, ref)).toBe(false);
   });
 });
 
