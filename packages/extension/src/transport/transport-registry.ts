@@ -1,5 +1,14 @@
+import type { Disposer } from "../disposer.js";
 import type { MeetPlugin } from "../plugins/plugin.js";
 import type { Retargetable, Transport } from "./transport.js";
+
+/**
+ * A liveness snapshot across the *enabled* transports — one boolean each,
+ * keyed by {@link TransportId}. A disabled transport is **absent** (not `false`),
+ * so a consumer can tell "off" from "on but not connected" and the shape extends
+ * cleanly to future transport ids. Produced by {@link TransportRegistry.snapshot}.
+ */
+export type TransportStatus = Record<string, boolean>;
 
 /**
  * Stable ids for the transports the registry manages. Keep these stable: the
@@ -36,6 +45,11 @@ export class TransportRegistry {
   readonly #plugins: MeetPlugin[];
   readonly #live = new Map<string, Transport>();
 
+  /** Aggregate-status subscribers (see {@link subscribe}). */
+  readonly #statusListeners = new Set<() => void>();
+  /** Per-transport status subscriptions, dropped when that transport is disabled. */
+  readonly #statusDisposers = new Map<string, Disposer>();
+
   constructor(plugins: MeetPlugin[]) {
     this.#plugins = plugins;
   }
@@ -54,6 +68,13 @@ export class TransportRegistry {
       transport.acceptPlugin(plugin);
     }
     this.#live.set(id, transport);
+    // Forward this transport's liveness transitions into the aggregate feed, and
+    // fire once now: the live set itself changed, so the snapshot did too.
+    this.#statusDisposers.set(
+      id,
+      transport.onStatusChange(() => this.#emitStatus()),
+    );
+    this.#emitStatus();
   }
 
   /** Detach and forget the transport under `id`. A no-op if it isn't live. */
@@ -62,8 +83,12 @@ export class TransportRegistry {
     if (transport === undefined) {
       return;
     }
+    this.#statusDisposers.get(id)?.();
+    this.#statusDisposers.delete(id);
     transport.detach();
     this.#live.delete(id);
+    // The transport dropped out of the snapshot → notify.
+    this.#emitStatus();
   }
 
   /**
@@ -78,5 +103,36 @@ export class TransportRegistry {
 
   isEnabled(id: string): boolean {
     return this.#live.has(id);
+  }
+
+  /**
+   * The current liveness across enabled transports. Only live ids appear; each
+   * value is that transport's {@link Transport.active}. This is the read half of
+   * the narrow status port handed to the widget — never the registry itself, so
+   * the widget gains a status feed but no enable/disable/retarget power.
+   */
+  snapshot(): TransportStatus {
+    const status: TransportStatus = {};
+    for (const [id, transport] of this.#live) {
+      status[id] = transport.active();
+    }
+    return status;
+  }
+
+  /**
+   * Subscribe to *aggregate* status changes — any live transport flipping active,
+   * or the live set itself changing (enable/disable). Fires the change, not the
+   * value; the consumer re-reads {@link snapshot}. Additive, mirroring the
+   * per-transport `onStatusChange`. Returns an unsubscribe.
+   */
+  subscribe(onChange: () => void): Disposer {
+    this.#statusListeners.add(onChange);
+    return () => this.#statusListeners.delete(onChange);
+  }
+
+  #emitStatus(): void {
+    for (const listener of this.#statusListeners) {
+      listener();
+    }
   }
 }

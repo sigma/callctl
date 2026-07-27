@@ -147,6 +147,42 @@ describe("WSTransport", () => {
     expect(FakeWebSocket.instances).toHaveLength(1); // socket never closed
   });
 
+  test("active tracks the socket: false while connecting, true once open, false on close", () => {
+    const ws = new WSTransport(2395);
+    expect(ws.active()).toBe(false); // connecting
+
+    only().open();
+    expect(ws.active()).toBe(true);
+
+    only().close();
+    expect(ws.active()).toBe(false);
+  });
+
+  test("onStatusChange fires on each genuine open/close transition only", () => {
+    const ws = new WSTransport(2395);
+    const onChange = vi.fn();
+    ws.onStatusChange(onChange);
+
+    only().open(); // false → true
+    expect(onChange).toHaveBeenCalledTimes(1);
+
+    // A failed reconnect (close while already not-open) is not a transition.
+    only().close(); // true → false
+    expect(onChange).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(2000);
+    FakeWebSocket.instances[1].close(); // still not-open → no extra fire
+    expect(onChange).toHaveBeenCalledTimes(2);
+  });
+
+  test("onStatusChange unsubscribe stops delivery", () => {
+    const ws = new WSTransport(2395);
+    const onChange = vi.fn();
+    const off = ws.onStatusChange(onChange);
+    off();
+    only().open();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   test("retarget keeps installed handlers intact across the redial", () => {
     const ws = new WSTransport(2395);
     const handler = vi.fn();

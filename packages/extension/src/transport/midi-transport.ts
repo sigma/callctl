@@ -92,6 +92,13 @@ export class MidiTransport extends BaseTransport implements Retargetable<MidiDev
       input.onmidimessage = (ev) => onMidiMessage(this, ev);
       this.#inputs.add(input);
     }
+    // Binding set may have changed (hotplug, re-select, initial ready) → liveness.
+    this.refreshStatus();
+  }
+
+  /** Live iff at least one selected device is actually bound. */
+  override active(): boolean {
+    return this.#inputs.size > 0;
   }
 
   /** Whether the current selection covers this input (id-primary, then name+mfr). */
@@ -135,6 +142,7 @@ export class MidiTransport extends BaseTransport implements Retargetable<MidiDev
     }
     this.#inputs.clear();
     this.midiMap.clear();
+    this.refreshStatus(); // no bindings left → active → false
   }
 }
 

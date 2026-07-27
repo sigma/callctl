@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, test } from "vitest";
 import { defaultConfig, type MidiDeviceRef, type TransportConfig } from "../config.js";
+import type { TransportStatus } from "../transport/transport-registry.js";
 import {
   type MidiInputInfo,
   type MidiInputSource,
   mountWidget,
+  type TransportStatusSource,
   type TransportWidget,
   type WidgetDeps,
 } from "./widget.js";
@@ -77,6 +79,23 @@ function fakeMidi(initial: MidiInputInfo[] = []) {
   return { source, setInputs };
 }
 
+function fakeStatus(initial: TransportStatus = {}) {
+  let snap = initial;
+  const subs: (() => void)[] = [];
+  const source: TransportStatusSource = {
+    snapshot: () => snap,
+    subscribe: (cb) => {
+      subs.push(cb);
+      return () => {};
+    },
+  };
+  const set = (next: TransportStatus) => {
+    snap = next;
+    for (const cb of subs) cb();
+  };
+  return { source, set };
+}
+
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 // Every mounted widget is tracked and torn down in afterEach: an undisposed
@@ -100,6 +119,11 @@ const sdBox = () => rows()[0];
 const devBox = () => rows()[1];
 const midiBox = () => rows()[2];
 const midiChecks = () => [...shadow().querySelectorAll<HTMLInputElement>(".midiList label input")];
+// Live dots ride only on the two real transport rows (Stream Deck, then MIDI).
+const dots = () => [...shadow().querySelectorAll<HTMLElement>(".row .dot")];
+const sdDot = () => dots()[0];
+const midiDot = () => dots()[1];
+const card = () => shadow().querySelector<HTMLElement>(".card");
 
 afterEach(() => {
   for (const widget of mounted.splice(0)) widget.destroy();
@@ -223,6 +247,59 @@ describe("MIDI device checklist", () => {
     setInputs([{ id: "a", name: "APC", manufacturer: "Akai" }]);
     await flush();
     expect(midiChecks()).toHaveLength(1);
+  });
+});
+
+describe("live transport status dots + pill tint", () => {
+  test("only the Stream Deck and MIDI rows carry a dot", async () => {
+    const { local, onChanged } = fakeStorage({ config: defaultConfig(2395) });
+    mount({ local, onChanged, status: fakeStatus().source });
+    await flush();
+    expect(dots()).toHaveLength(2); // dev-bridge row has none
+  });
+
+  test("a disabled transport shows no dot; enabled+active is green; enabled+inactive is amber", async () => {
+    const config: TransportConfig = {
+      ...defaultConfig(2395),
+      ws: { ...defaultConfig().ws, enabled: true }, // active below
+      midi: { enabled: false, devices: "all" }, // disabled → hidden
+    };
+    const { local, onChanged } = fakeStorage({ config });
+    // ws enabled + not in snapshot (not connected) → amber; midi disabled → hidden.
+    mount({ local, onChanged, status: fakeStatus({}).source });
+    await flush();
+    expect(sdDot().className).toBe("dot stale");
+    expect(midiDot().className).toBe("dot hidden");
+  });
+
+  test("an active enabled transport paints green", async () => {
+    const { local, onChanged } = fakeStorage({ config: defaultConfig(2395) });
+    mount({ local, onChanged, status: fakeStatus({ ws: true, midi: true }).source });
+    await flush();
+    expect(sdDot().className).toBe("dot live");
+    expect(midiDot().className).toBe("dot live");
+  });
+
+  test("a status change repaints the dot live without a config write", async () => {
+    const { local, onChanged } = fakeStorage({ config: defaultConfig(2395) });
+    const status = fakeStatus({ ws: false, midi: false });
+    mount({ local, onChanged, status: status.source });
+    await flush();
+    expect(sdDot().className).toBe("dot stale");
+
+    status.set({ ws: true, midi: false }); // ws just connected
+    expect(sdDot().className).toBe("dot live");
+  });
+
+  test("the pill tints amber (.warn) exactly when an enabled transport is inactive", async () => {
+    const { local, onChanged } = fakeStorage({ config: defaultConfig(2395) });
+    const status = fakeStatus({ ws: false, midi: false });
+    mount({ local, onChanged, status: status.source });
+    await flush();
+    expect(card()?.classList.contains("warn")).toBe(true);
+
+    status.set({ ws: true, midi: true }); // all live now
+    expect(card()?.classList.contains("warn")).toBe(false);
   });
 });
 

@@ -45,6 +45,7 @@ export class WSTransport extends BaseTransport implements Retargetable<number> {
     ws.onclose = () => {
       // Fires on both disconnection and failure to connect.
       this.#ws = null;
+      this.refreshStatus(); // active → false (onerror also funnels through here)
       if (!this.#shut) {
         setTimeout(() => this.#connect(), RECONNECTION_INTERVAL_SECS * 1000);
       }
@@ -53,6 +54,7 @@ export class WSTransport extends BaseTransport implements Retargetable<number> {
     ws.onopen = () => {
       // Re-push state on (re)connect so the LEDs start correct — this is why the
       // dev-bridge/port-change retarget is transparent: the redial fires this.
+      this.refreshStatus(); // active → true
       this.onConnect();
     };
 
@@ -85,6 +87,11 @@ export class WSTransport extends BaseTransport implements Retargetable<number> {
     }
     this.#port = port;
     this.#ws?.close();
+  }
+
+  /** Live iff the socket is actually open — connecting/retrying reads as not-active. */
+  override active(): boolean {
+    return this.#ws?.readyState === WebSocket.OPEN;
   }
 
   send(message: Message): void {

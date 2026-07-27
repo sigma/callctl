@@ -38,6 +38,8 @@ function fakeTransport() {
       onDetach: () => {},
       detach: () => {},
       acceptPlugin: () => {},
+      active: () => false,
+      onStatusChange: () => () => {},
     },
   };
 }

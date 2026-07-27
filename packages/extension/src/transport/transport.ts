@@ -52,6 +52,24 @@ export interface Transport {
    * fresh instance. Subsumes the old `shutdown`.
    */
   detach: () => void;
+
+  /**
+   * Is this transport currently *carrying traffic* — the ws socket actually
+   * `OPEN`, MIDI actually bound to ≥1 device? This is liveness, not the
+   * enabled/disabled config bit: an enabled ws that is mid-reconnect is not
+   * active. A transport with no meaningful liveness reports `false`. The widget
+   * renders this per-row as a live dot (see {@link TransportRegistry.snapshot}).
+   */
+  active: () => boolean;
+
+  /**
+   * Subscribe to {@link active} transitions. *Additive* (a `Set` of listeners,
+   * never a single settable field), exactly like `Model.onMuteStateChange` — the
+   * `TransportRegistry` aggregates each transport's slice into one status feed,
+   * and a single overwritable field would let one subscriber clobber another.
+   * Only genuine transitions fire (see {@link BaseTransport.refreshStatus}).
+   */
+  onStatusChange: (listener: () => void) => Disposer;
 }
 
 /**
@@ -75,6 +93,42 @@ export abstract class BaseTransport implements Transport {
   onConnect: () => void = () => {};
 
   readonly #disposers = new Set<Disposer>();
+
+  /** Status subscribers (see {@link Transport.onStatusChange}). */
+  readonly #statusListeners = new Set<() => void>();
+  /** Last active-ness we notified, so {@link refreshStatus} only fires on a real flip. */
+  #lastActive: boolean | undefined;
+
+  /**
+   * Liveness. The default is "never active" so a transport with no real pipe
+   * status (a test fake, a future input-only transport) needs no override;
+   * {@link WSTransport} and {@link MidiTransport} override it.
+   */
+  active(): boolean {
+    return false;
+  }
+
+  onStatusChange(listener: () => void): Disposer {
+    this.#statusListeners.add(listener);
+    return () => this.#statusListeners.delete(listener);
+  }
+
+  /**
+   * Recompute {@link active} and, on a genuine transition, notify subscribers —
+   * faithful to `HTMLModel`'s mute-state rescan, so a flapping reconnect loop or
+   * a redundant MIDI reconcile stays quiet. Concrete transports call this after
+   * any event that might have flipped their liveness.
+   */
+  protected refreshStatus(): void {
+    const active = this.active();
+    if (active === this.#lastActive) {
+      return;
+    }
+    this.#lastActive = active;
+    for (const listener of this.#statusListeners) {
+      listener();
+    }
+  }
 
   onDetach(d: Disposer): void {
     this.#disposers.add(d);
