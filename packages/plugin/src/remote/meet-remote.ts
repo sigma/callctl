@@ -44,6 +44,9 @@ export class MeetRemote {
   #micOff = false;
   #cameraOff = false;
   #handLowered = false;
+  // Captions have no Go precedent; they default off, which is Meet's own
+  // default. Like the others, we query the real state on connect.
+  #captionsOff = true;
 
   readonly #inputHandlers: Record<string, (data: string | undefined) => void>;
   readonly #listeners = new Set<StateChangeListener>();
@@ -63,6 +66,9 @@ export class MeetRemote {
       },
       [StateEvent.HandState]: (data) => {
         this.#handLowered = data === StateValue.Lowered;
+      },
+      [StateEvent.CaptionsState]: (data) => {
+        this.#captionsOff = data === StateValue.CaptionsOff;
       },
     };
   }
@@ -133,6 +139,7 @@ export class MeetRemote {
     this.askMicState();
     this.askCameraState();
     this.askHandState();
+    this.askCaptionsState();
   }
 
   #processInput(raw: string): void {
@@ -207,6 +214,15 @@ export class MeetRemote {
     return this.#handLowered;
   }
 
+  /**
+   * Captions are on. Mirrors the mic/camera readers (returns the *on* state, not
+   * the hand-style inverted one). The captions-toggle action's on/off images are
+   * staged to match.
+   */
+  captionsState(): boolean {
+    return !this.#captionsOff;
+  }
+
   // --- Remote "buttons" (commands, mirroring Go method names) ----------------
 
   leave(): void {
@@ -267,6 +283,22 @@ export class MeetRemote {
 
   askHandState(): void {
     this.#send(Command.GetHandState);
+  }
+
+  enableCaptions(): void {
+    this.#send(Command.EnableCaptions);
+  }
+
+  disableCaptions(): void {
+    this.#send(Command.DisableCaptions);
+  }
+
+  toggleCaptions(): void {
+    this.#send(Command.ToggleCaptions);
+  }
+
+  askCaptionsState(): void {
+    this.#send(Command.GetCaptionsState);
   }
 
   /** Send a reaction. `data` is the Meet alt-text label for the slug. */

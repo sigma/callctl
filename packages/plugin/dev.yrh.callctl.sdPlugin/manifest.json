@@ -147,6 +147,32 @@
 			]
 		},
 		{
+			"Name": "Captions Off",
+			"UUID": "dev.yrh.callctl.captions-off",
+			"Icon": "imgs/actions/captions_off",
+			"Tooltip": "Captions Off",
+			"SupportedInMultiActions": true,
+			"States": [
+				{
+					"Image": "imgs/actions/captions_off",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Captions On",
+			"UUID": "dev.yrh.callctl.captions-on",
+			"Icon": "imgs/actions/captions_on",
+			"Tooltip": "Captions On",
+			"SupportedInMultiActions": true,
+			"States": [
+				{
+					"Image": "imgs/actions/captions_on",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
 			"Name": "React love",
 			"UUID": "dev.yrh.callctl.react-love",
 			"Icon": "imgs/actions/react_love",
@@ -313,6 +339,24 @@
 				},
 				{
 					"Image": "imgs/actions/hand_off",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Captions Toggle",
+			"UUID": "dev.yrh.callctl.captions-toggle",
+			"Icon": "imgs/actions/captions_on",
+			"Tooltip": "Toggle captions",
+			"SupportedInMultiActions": false,
+			"DisableAutomaticStates": true,
+			"States": [
+				{
+					"Image": "imgs/actions/captions_on",
+					"TitleAlignment": "middle"
+				},
+				{
+					"Image": "imgs/actions/captions_off",
 					"TitleAlignment": "middle"
 				}
 			]

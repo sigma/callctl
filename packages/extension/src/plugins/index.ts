@@ -1,3 +1,4 @@
+import { newCaptionsPlugin } from "./captions-plugin.js";
 import { newCorePlugin } from "./core-plugin.js";
 import { newDebugPlugin } from "./debug-plugin.js";
 import { newHandPlugin } from "./hand-plugin.js";
@@ -20,6 +21,7 @@ export function loadPlugins(opts: { persistSelectors?: PersistSelectors } = {}):
   const plugins = [
     newCorePlugin(),
     newHandPlugin(),
+    newCaptionsPlugin(),
     newReactPlugin(),
     newSelectorsPlugin(opts.persistSelectors),
   ];

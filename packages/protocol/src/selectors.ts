@@ -34,6 +34,10 @@ export const SelectorKey = {
   HandLower: "handLower",
   /** "Send a reaction" opener accessible-name substring. */
   ReactionOpener: "reactionOpener",
+  /** Turn-on-captions button accessible-name substring (present only while off). */
+  CaptionsOn: "captionsOn",
+  /** Turn-off-captions button accessible-name substring (present only while on). */
+  CaptionsOff: "captionsOff",
 } as const;
 export type SelectorKey = (typeof SelectorKey)[keyof typeof SelectorKey];
 
@@ -53,6 +57,8 @@ export const DEFAULT_SELECTORS: SelectorConfig = {
   handRaise: "Raise hand",
   handLower: "Lower hand",
   reactionOpener: "Send a reaction",
+  captionsOn: "Turn on captions",
+  captionsOff: "Turn off captions",
 };
 
 const KEYS = new Set<string>(Object.values(SelectorKey));
