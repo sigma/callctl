@@ -97,8 +97,15 @@ export function buildActions(
   );
 
   // The Next-Meeting countdown key (§2) — timer-driven, renders its own image,
-  // and opens the join URL on press (§7) via the injected host-open dep.
-  actions.push(new NextMeetingAction(uuid("next-meeting"), calendar, nextMeetingDeps));
+  // and opens the join URL on press (§7) via the injected host-open dep. The
+  // optional §10 join-detection reader is wired from the shared remote here (the
+  // one place that holds it) so the action stays decoupled from the ws server.
+  actions.push(
+    new NextMeetingAction(uuid("next-meeting"), calendar, {
+      ...nextMeetingDeps,
+      joinedKey: () => remote.joinedKey(),
+    }),
+  );
 
   return actions;
 }

@@ -106,6 +106,62 @@ export function selectMeetings(
   return rows.map((r) => r.instance);
 }
 
+/**
+ * Apply §10 late-state **dismissal** to the ordered list, returning only the
+ * instances a key should still surface. This is the pre-filter the render clock
+ * and press handler run before {@link currentInstance} / {@link displayHorizon},
+ * so a dismissed late meeting drops out of the view and every key advances to
+ * the next event.
+ *
+ * Two independent dismissal paths, both always on (the extension is optional, so
+ * the time-based one is primary):
+ *
+ * 1. **Grace fallback (§10).** Any instance whose start is more than
+ *    `graceMinutes` in the past is dismissed — the flashing "late" state ends at
+ *    `start + graceMinutes`. Combined with {@link currentInstance}'s own
+ *    `end > now` filter downstream, this realizes the spec's
+ *    `min(join-proof, start + graceMinutes, DTEND)` cap (a meeting that already
+ *    ended never out-lasts its own `DTEND`). `graceMinutes` is per-key (§3).
+ * 2. **Windowed join-proof (§10).** When `joinedKey` matches the tier-(a) code
+ *    of some tracked instance, *every* instance up to and including the
+ *    **latest** such match is dismissed — so joining event N+1 directly still
+ *    advances the key past the skipped event N. The compare is case-insensitive.
+ *
+ * A **press never counts as join-proof** (§10): only a real `joinedKey` (or the
+ * grace timer) dismisses — this function never sees a press.
+ *
+ * @param list         a {@link selectMeetings} result (ordered `start ↑ → end ↑ → uid`).
+ * @param now          the reference instant.
+ * @param graceMinutes the key's late-state grace in minutes (§3; default 10).
+ * @param joinedKey    the §10 join key (e.g. `"gmeet:abc-def-ghi"`), or `null`.
+ */
+export function applyDismissal(
+  list: MeetingInstance[],
+  now: Date,
+  graceMinutes: number,
+  joinedKey: string | null,
+): MeetingInstance[] {
+  // Windowed join-proof: the highest index whose tier-(a) code matches the join
+  // key. Everything at or before it is dismissed (advance past skipped events).
+  let joinCut = -1;
+  if (joinedKey) {
+    const key = joinedKey.toLowerCase();
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i].candidate;
+      if (c.tier === "a" && c.code !== undefined && c.code.toLowerCase() === key) {
+        joinCut = i;
+      }
+    }
+  }
+
+  const graceMs = graceMinutes * 60 * 1000;
+  const nowMs = now.getTime();
+  return list.filter((inst, i) => {
+    if (i <= joinCut) return false; // join-proof: dismissed up to & incl. the match
+    return nowMs < inst.start.getTime() + graceMs; // grace fallback: drop once late past grace
+  });
+}
+
 /** `true` iff two instants fall on the same machine-local calendar date (§5). */
 function isSameLocalDay(a: Date, b: Date): boolean {
   return (

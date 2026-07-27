@@ -47,6 +47,11 @@ export class MeetRemote {
   // Captions have no Go precedent; they default off, which is Meet's own
   // default. Like the others, we query the real state on connect.
   #captionsOff = true;
+  // Optional §10 join-detection: the provider-namespaced code of the call the
+  // extension reports you are *in* (e.g. "gmeet:abc-def-ghi"), or null when not
+  // in a call / no extension present. Read-only — never drives Meet. Reset to
+  // null on disconnect so a stale key can't keep dismissing the late state.
+  #joinedKey: string | null = null;
 
   readonly #inputHandlers: Record<string, (data: string | undefined) => void>;
   readonly #listeners = new Set<StateChangeListener>();
@@ -69,6 +74,11 @@ export class MeetRemote {
       },
       [StateEvent.CaptionsState]: (data) => {
         this.#captionsOff = data === StateValue.CaptionsOff;
+      },
+      // §10: "joined" carries the namespaced code; "not in a call" arrives with
+      // no data (or empty) → null. Additive read-only cache, like the others.
+      [StateEvent.CallState]: (data) => {
+        this.#joinedKey = data ? data : null;
       },
     };
   }
@@ -127,6 +137,9 @@ export class MeetRemote {
     conn.on("close", () => {
       if (this.#conn === conn) {
         this.#conn = null;
+        // Drop join-proof: with no extension we can no longer detect a call, so
+        // a stale key must not keep dismissing the late state (§10).
+        this.#joinedKey = null;
         this.#log("extension disconnected");
         this.#notifyStateChange();
       }
@@ -221,6 +234,17 @@ export class MeetRemote {
    */
   captionsState(): boolean {
     return !this.#captionsOff;
+  }
+
+  /**
+   * The optional §10 join-detection key: the provider-namespaced canonical code
+   * of the call the extension reports you are currently *in* (e.g.
+   * `"gmeet:abc-def-ghi"`), or `null` when not in a call, when no extension is
+   * connected, or when the extension is absent entirely. `NextMeetingAction`
+   * matches this against its tracked events to dismiss the late state on join.
+   */
+  joinedKey(): string | null {
+    return this.#joinedKey;
   }
 
   // --- Remote "buttons" (commands, mirroring Go method names) ----------------

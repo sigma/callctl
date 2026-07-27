@@ -141,6 +141,7 @@ describe("NextMeetingAction — press → open (§7)", () => {
       openUrl?: (u: string) => Promise<void>;
       openWith?: (u: string, t: OpenTarget) => Promise<void>;
       log?: (m: string) => void;
+      joinedKey?: () => string | null;
     },
     settings: Record<string, unknown>,
     body: (action: NextMeetingAction, key: ReturnType<typeof fakeKey>) => void,
@@ -251,6 +252,36 @@ describe("NextMeetingAction — press → open (§7)", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("advances past a joined meeting (§10): a press opens the next event, not the joined one", () => {
+    // Two live meetings; the first is the one we've joined (join proof matches
+    // its code), so the surfaced event a press opens is the *second*.
+    const joined = instance(-5_000, 55_000, {
+      title: "Joined",
+      candidate: {
+        tier: "a",
+        provider: "gmeet",
+        code: "gmeet:abc-def-ghi",
+        joinUrl: "https://meet.google.com/abc-def-ghi",
+      },
+    });
+    const next = instance(10_000, 70_000, {
+      title: "Next",
+      candidate: {
+        tier: "a",
+        provider: "gmeet",
+        code: "gmeet:next-meet-ing",
+        joinUrl: "https://meet.google.com/next-meet-ing",
+      },
+    });
+    const service = fakeService({ snapshot: { status: "ok", list: [joined, next] } });
+    const openUrl = vi.fn(async () => {});
+    const deps = { openUrl, joinedKey: () => "gmeet:abc-def-ghi" };
+    withKey(service, deps, { feedId: "work", offset: 0 }, (action, key) => {
+      action.onKeyDown(keyDownEv(key));
+      expect(openUrl).toHaveBeenCalledWith("https://meet.google.com/next-meet-ing");
+    });
   });
 
   it("is fire-and-forget: a rejected open is logged, never thrown", async () => {
