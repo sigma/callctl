@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PROTOTYPE — Next-Meeting key display + escalation (issue #39)</title>
+<!--
+  THROWAWAY PROTOTYPE — answers issue #39 (map #35).
+  Question: what does a 72x72 Stream Deck key show for the "Next Meeting" action,
+  and how does it escalate as start approaches and passes (-> flashing red when late)?
+
+  Three STRUCTURALLY-different variants, switch with the bottom bar or ?variant=A|B|C
+  or the left/right arrow keys:
+    A - Countdown-primary  ("how long till I move")  big MM:SS, title as thin strip
+    B - Title-primary      ("what is my next call")  title dominates, countdown pill
+    C - Clock + ring       ("at what o'clock")        start time big + draining ring
+
+  Each variant shows: a LIVE scrubber (drag T-minus to watch escalation + flash cadence),
+  a filmstrip of representative moments, and the edge states (free / not-configured).
+
+  No build. Open directly:  open packages/plugin/prototypes/next-meeting-key/index.html
+  Nothing here is production code; the winner gets folded into a real key renderer.
+-->
+<style>
+  :root {
+    /* Escalation palette — seeded from user intent + reference (orange @5min, red @30s) */
+    --neutral-bg: #1f2733;   --neutral-fg: #e8edf3;  --neutral-accent:#3d5573;
+    --approach-bg:#7a3d00;   --approach-fg:#ffe9cf;  --approach-accent:#ff8c1a; /* orange <=5m */
+    --imminent-bg:#7a0d0d;   --imminent-fg:#ffe0e0;  --imminent-accent:#ff3b3b; /* red    <=30s */
+    --late-bg:    #b30000;   --late-fg:    #ffffff;  --late-accent:   #ffffff;   /* flashing */
+    --free-bg:    #16351f;   --free-fg:    #b9e6c6;
+    --idle-bg:    #26262b;   --idle-fg:    #8a8a93;
+    --page:#0a0a0c;
+  }
+  * { box-sizing: border-box; }
+  html,body { margin:0; background:var(--page); color:#d8dde3;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { padding:20px 24px 4px; }
+  header h1 { font-size:15px; font-weight:600; margin:0; letter-spacing:.2px; color:#eef2f6;}
+  header p  { font-size:12px; margin:6px 0 0; color:#8b929b; max-width:70ch; line-height:1.5;}
+  header code { background:#1b1b20; padding:1px 5px; border-radius:4px; color:#c9d3dd; }
+  main { padding:16px 24px 120px; }
+  section.block { margin:26px 0; }
+  section.block > h2 { font-size:12px; text-transform:uppercase; letter-spacing:.9px;
+    color:#6f7681; font-weight:700; margin:0 0 12px; }
+  .row { display:flex; flex-wrap:wrap; gap:18px; align-items:flex-start; }
+
+  /* ---- The key itself. True render target is 72x72 (144 @2x). Shown at 2x for judging. ---- */
+  .key {
+    width:144px; height:144px; border-radius:14px; position:relative; overflow:hidden;
+    background:var(--neutral-bg); color:var(--neutral-fg);
+    box-shadow: 0 2px 0 #000, inset 0 0 0 1px rgba(255,255,255,.06);
+    display:flex; flex-direction:column; user-select:none;
+    font-variant-numeric: tabular-nums;
+  }
+  .key.small { width:72px; height:72px; border-radius:9px; }           /* true 1x size */
+  .key .cap { position:absolute; top:-22px; left:0; right:0; text-align:center;
+    font-size:10px; color:#6b7280; }
+  figure { margin:0; display:flex; flex-direction:column; align-items:center; gap:26px; }
+  figure figcaption { font-size:11px; color:#7d848d; margin-top:2px; text-align:center; max-width:150px;}
+
+  /* escalation background states applied to .key */
+  .s-neutral  { background:var(--neutral-bg);  color:var(--neutral-fg);  }
+  .s-approach { background:var(--approach-bg); color:var(--approach-fg); }
+  .s-imminent { background:var(--imminent-bg); color:var(--imminent-fg);
+    animation: pulse 1.2s ease-in-out infinite; }               /* gentle blink @<=30s */
+  .s-late     { color:var(--late-fg); animation: flash .9s steps(1,end) infinite; }
+  .s-free     { background:var(--free-bg); color:var(--free-fg); }
+  .s-idle     { background:var(--idle-bg); color:var(--idle-fg); }
+  @keyframes pulse { 0%,100%{ background:var(--imminent-bg);} 50%{ background:#a01414;} }
+  @keyframes flash { 0%,49%{ background:var(--late-bg);} 50%,100%{ background:#2a0000;} }
+
+  /* ---------------- Variant A: countdown-primary ---------------- */
+  .A .title { flex:0 0 auto; font-size:11px; line-height:1.15; padding:7px 8px 4px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; opacity:.85; font-weight:600;}
+  .A .count { flex:1 1 auto; display:flex; align-items:center; justify-content:center;
+    font-size:38px; font-weight:800; letter-spacing:-1px; }
+  .A .count.sm { font-size:26px; }
+  .A .sub { flex:0 0 auto; text-align:center; font-size:10px; padding:0 0 8px; opacity:.75; }
+
+  /* ---------------- Variant B: title-primary ---------------- */
+  .B .title { flex:1 1 auto; font-size:15px; font-weight:700; line-height:1.12;
+    padding:11px 10px 6px; overflow:hidden;
+    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; }
+  .B .pill  { flex:0 0 auto; margin:0 8px 9px; align-self:flex-start;
+    background:rgba(0,0,0,.28); border-radius:999px; padding:3px 9px; font-size:12px;
+    font-weight:800; display:inline-flex; gap:5px; align-items:center; }
+  .B .pill .dot { width:7px; height:7px; border-radius:50%; background:currentColor; }
+  .B .pill.accent { color:var(--_accent); }
+
+  /* ---------------- Variant C: clock + draining ring ---------------- */
+  .C .ringwrap { flex:1 1 auto; display:flex; align-items:center; justify-content:center;
+    position:relative; }
+  .C svg { transform: rotate(-90deg); }
+  .C .clock { position:absolute; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; }
+  .C .clock .hhmm { font-size:30px; font-weight:800; letter-spacing:-1px; line-height:1;}
+  .C .clock .ampm { font-size:11px; font-weight:700; opacity:.7; margin-top:2px;}
+  .C .title { flex:0 0 auto; text-align:center; font-size:10px; padding:0 6px 8px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; opacity:.8; font-weight:600;}
+
+  /* ---- live scrubber ---- */
+  .scrub { display:flex; flex-direction:column; gap:10px; min-width:300px; }
+  .scrub input[type=range]{ width:320px; }
+  .scrub .readout { font-size:13px; color:#aeb6bf; font-variant-numeric:tabular-nums;}
+  .scrub .readout b { color:#eef2f6; }
+  .state-tag { display:inline-block; font-size:11px; font-weight:800; text-transform:uppercase;
+    letter-spacing:.6px; padding:2px 8px; border-radius:5px; margin-left:8px; }
+  .tag-neutral{background:var(--neutral-accent);color:#fff;}
+  .tag-approach{background:var(--approach-accent);color:#3a1a00;}
+  .tag-imminent{background:var(--imminent-accent);color:#3a0000;}
+  .tag-late{background:var(--late-bg);color:#fff;}
+  .note { font-size:12px; color:#7d848d; line-height:1.55; max-width:60ch; }
+  .note b{color:#c3cbd4;}
+
+  /* ---- floating variant switcher ---- */
+  .switcher { position:fixed; bottom:18px; left:50%; transform:translateX(-50%);
+    display:flex; align-items:center; gap:2px; background:#101319; color:#e9eef4;
+    border:1px solid #2b323d; border-radius:999px; padding:5px 7px;
+    box-shadow:0 10px 30px rgba(0,0,0,.6); z-index:50; }
+  .switcher button { background:transparent; border:0; color:inherit; font-size:18px;
+    cursor:pointer; padding:4px 12px; border-radius:999px; line-height:1;}
+  .switcher button:hover { background:#20262f; }
+  .switcher .label { font-size:13px; font-weight:700; padding:0 12px; min-width:190px;
+    text-align:center; }
+  .switcher .label small { display:block; font-weight:500; color:#8b929b; font-size:11px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Next-Meeting key — display &amp; escalation prototype</h1>
+  <p>Throwaway artifact for <strong>issue #39</strong>. Three structurally-different takes on
+  what the 72×72 key shows. Drag the <b>T-minus</b> slider to watch escalation and the
+  <b>late flash</b> in motion. Flip variants with the bottom bar or <code>←</code>/<code>→</code>.
+  Keys are drawn at 2× (144px); a true-size 72px strip is shown too.</p>
+</header>
+
+<main>
+  <section class="block">
+    <h2 id="hdr-live">Live — drag T-minus</h2>
+    <div class="row" style="align-items:center; gap:40px;">
+      <figure>
+        <div id="heroKey" class="key"></div>
+        <figcaption id="heroCap"></figcaption>
+      </figure>
+      <div class="scrub">
+        <input id="tminus" type="range" min="-180" max="1200" value="600" step="1" />
+        <div class="readout">T-minus <b id="tval"></b> to start
+          <span id="tag" class="state-tag"></span></div>
+        <div class="note" id="varNote"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Filmstrip — representative moments (true 72px size)</h2>
+    <div class="row" id="filmstrip"></div>
+  </section>
+
+  <section class="block">
+    <h2>Edge states</h2>
+    <div class="row" id="edge"></div>
+  </section>
+</main>
+
+<div class="switcher">
+  <button id="prev" aria-label="previous variant">‹</button>
+  <div class="label" id="vlabel"></div>
+  <button id="next" aria-label="next variant">›</button>
+</div>
+
+<script>
+// ---- escalation model (the thing being decided) -------------------------------
+// thresholds seeded from user intent + reference plugin. Pure function of seconds-to-start.
+const APPROACH = 5 * 60;  // <= 5 min  -> orange
+const IMMINENT = 30;      // <= 30 sec -> solid red
+// < 0 (past start) -> late, flashing red
+
+function stateOf(sec) {
+  if (sec < 0)          return "late";
+  if (sec <= IMMINENT)  return "imminent";
+  if (sec <= APPROACH)  return "approach";
+  return "neutral";
+}
+function cls(state){ return "s-" + state; }
+function tag(state){
+  return {neutral:"tag-neutral",approach:"tag-approach",imminent:"tag-imminent",late:"tag-late"}[state];
+}
+function accentVar(state){
+  return {neutral:"var(--neutral-accent)",approach:"var(--approach-accent)",
+          imminent:"var(--imminent-accent)",late:"var(--late-accent)"}[state];
+}
+
+// countdown string. >1h -> "1h04" ; else mm:ss ; late -> "+mm:ss"
+function fmtCountdown(sec){
+  const late = sec < 0; let s = Math.abs(sec);
+  if (s >= 3600){ const h=Math.floor(s/3600), m=Math.floor((s%3600)/60);
+    return (late?"+":"") + h + "h" + String(m).padStart(2,"0"); }
+  const m=Math.floor(s/60), ss=s%60;
+  return (late?"+":"") + m + ":" + String(ss).padStart(2,"0");
+}
+// coarse label used by title-primary pill / captions
+function fmtCoarse(sec){
+  const late = sec < 0, s = Math.abs(sec);
+  if (late){
+    if (s < 60) return "started " + s + "s ago";
+    if (s < 3600) return "started " + Math.round(s/60) + "m ago";
+    return "started " + Math.floor(s/3600) + "h ago";
+  }
+  if (s < 60) return s + "s left";
+  if (s < 3600) return Math.round(s/60) + " min left";
+  const h=Math.floor(s/60/60), m=Math.round((s/60)%60);
+  return h + "h" + (m?(" "+m+"m"):"") + " left";
+}
+// fake wall-clock start time for the clock variant (fixed for determinism: 2:30 PM)
+function startClock(sec){
+  return {hhmm: "2:30", ampm: "PM"};
+}
+
+// ---- variant renderers: return innerHTML for a .key given (sec, title) --------
+const TITLE = "Design review — Q3 roadmap";
+const RING = { r: 52, c: 2*Math.PI*52 };
+
+const variants = {
+  A: {
+    name: "Countdown-primary",
+    blurb: "Big MM:SS answers <b>“how long until I get up.”</b> Title is a thin strip on top "
+         + "(truncated; would marquee on tap). Whole face carries the escalation colour.",
+    render(sec, title){
+      const late = sec<0;
+      const c = fmtCountdown(sec);
+      return `<div class="title">${title}</div>
+        <div class="count ${c.length>4?'sm':''}">${c}</div>
+        <div class="sub">${late? "overdue" : (sec<=IMMINENT?"starting":"to start")}</div>`;
+    }
+  },
+  B: {
+    name: "Title-primary",
+    blurb: "Meeting <b>title dominates</b> (up to 3 lines) — answers “what is my next call” "
+         + "first. Urgency is a coloured pill at the bottom + accent. Reads like a to-do card.",
+    render(sec, title){
+      const st = stateOf(sec);
+      return `<div class="title">${title}</div>
+        <div class="pill accent" style="--_accent:${accentVar(st)}">
+          <span class="dot"></span>${fmtCoarse(sec)}</div>`;
+    }
+  },
+  C: {
+    name: "Clock + draining ring",
+    blurb: "Shows the <b>start o’clock</b> big with a ring that drains over the last hour — an "
+         + "analog sense of proximity. Ring + face escalate; title is a thin footer.",
+    render(sec, title){
+      const st = stateOf(sec);
+      const {hhmm, ampm} = startClock(sec);
+      // ring fills over final hour (3600s). late -> full; flash handles the alarm.
+      const frac = Math.max(0, Math.min(1, 1 - sec/3600));
+      const off = RING.c * (1 - frac);
+      const ringColor = accentVar(st);
+      return `<div class="ringwrap">
+          <svg width="122" height="122" viewBox="0 0 122 122">
+            <circle cx="61" cy="61" r="52" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="8"/>
+            <circle cx="61" cy="61" r="52" fill="none" stroke="${ringColor}" stroke-width="8"
+              stroke-linecap="round" stroke-dasharray="${RING.c}" stroke-dashoffset="${off}"/>
+          </svg>
+          <div class="clock"><div class="hhmm">${hhmm}</div><div class="ampm">${ampm}</div></div>
+        </div>
+        <div class="title">${title}</div>`;
+    }
+  }
+};
+
+const EDGE = {
+  free: {
+    label: "No more today",
+    A: `<div class="count sm" style="font-size:20px">Free</div><div class="sub">rest of day</div>`,
+    B: `<div class="title" style="-webkit-line-clamp:2">No more meetings today</div>
+        <div class="pill"><span class="dot"></span>free</div>`,
+    C: `<div class="ringwrap"><div class="clock"><div class="hhmm" style="font-size:22px">✓</div>
+        <div class="ampm">clear</div></div></div><div class="title">Nothing scheduled</div>`
+  },
+  idle: {
+    label: "Not configured",
+    A: `<div class="count sm" style="font-size:16px">Set&nbsp;feed</div><div class="sub">tap → Options</div>`,
+    B: `<div class="title" style="-webkit-line-clamp:2">Add an iCal feed URL</div>
+        <div class="pill"><span class="dot"></span>setup</div>`,
+    C: `<div class="ringwrap"><div class="clock"><div class="hhmm" style="font-size:22px">⚙</div>
+        <div class="ampm">setup</div></div></div><div class="title">No feed yet</div>`
+  }
+};
+
+// representative filmstrip moments (seconds to start)
+const MOMENTS = [
+  [2820, "47 min"], [720, "12 min"], [300, "5 min"], [60, "1 min"],
+  [30, "30 sec"], [0, "now"], [-90, "1½ min late"], [-600, "10 min late"]
+];
+
+// ---- wiring -------------------------------------------------------------------
+let cur = new URLSearchParams(location.search).get("variant");
+if (!["A","B","C"].includes(cur)) cur = "A";
+
+function paintKey(el, state, html){
+  el.className = "key " + cls(state) + " " + cur;
+  el.innerHTML = html;
+}
+function renderAll(){
+  const V = variants[cur];
+  // hero (live)
+  const sec = parseInt(document.getElementById("tminus").value,10);
+  const st = stateOf(sec);
+  paintKey(document.getElementById("heroKey"), st, V.render(sec, TITLE));
+  document.getElementById("heroCap").textContent = "2× · true target 72px";
+  document.getElementById("tval").textContent = fmtCountdown(sec);
+  const tg = document.getElementById("tag"); tg.textContent = st; tg.className = "state-tag " + tag(st);
+  document.getElementById("varNote").innerHTML = V.blurb;
+
+  // filmstrip (true size)
+  const strip = document.getElementById("filmstrip"); strip.innerHTML = "";
+  for (const [s,lbl] of MOMENTS){
+    const fig = document.createElement("figure");
+    const k = document.createElement("div");
+    paintKey(k, stateOf(s), V.render(s, TITLE)); k.classList.add("small");
+    const cap = document.createElement("figcaption"); cap.textContent = lbl;
+    fig.append(k, cap); strip.append(fig);
+  }
+  // edge
+  const edge = document.getElementById("edge"); edge.innerHTML = "";
+  for (const key of ["free","idle"]){
+    const fig = document.createElement("figure");
+    const k = document.createElement("div");
+    k.className = "key " + (key==="free"?"s-free":"s-idle") + " " + cur;
+    k.innerHTML = EDGE[key][cur];
+    const cap = document.createElement("figcaption"); cap.textContent = EDGE[key].label;
+    fig.append(k, cap); edge.append(fig);
+  }
+  // switcher label
+  document.getElementById("vlabel").innerHTML =
+    `${cur} — ${V.name}<small>${{A:"how long",B:"what call",C:"what time"}[cur]}</small>`;
+}
+
+function setVariant(v){
+  cur = v;
+  const u = new URL(location); u.searchParams.set("variant", v); history.replaceState(null,"",u);
+  renderAll();
+}
+const order = ["A","B","C"];
+document.getElementById("prev").onclick = ()=> setVariant(order[(order.indexOf(cur)+2)%3]);
+document.getElementById("next").onclick = ()=> setVariant(order[(order.indexOf(cur)+1)%3]);
+document.getElementById("tminus").addEventListener("input", renderAll);
+addEventListener("keydown", e=>{
+  const t=e.target; if (/INPUT|TEXTAREA/.test(t.tagName)) return;
+  if (e.key==="ArrowLeft"){ document.getElementById("prev").click(); }
+  if (e.key==="ArrowRight"){ document.getElementById("next").click(); }
+});
+renderAll();
+</script>
+</body>
+</html>
