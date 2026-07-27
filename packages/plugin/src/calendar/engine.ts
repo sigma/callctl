@@ -162,15 +162,6 @@ export function applyDismissal(
   });
 }
 
-/** `true` iff two instants fall on the same machine-local calendar date (§5). */
-function isSameLocalDay(a: Date, b: Date): boolean {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
-}
-
 /**
  * The still-current-or-upcoming instance a key at `offset` points at *right now*
  * (§9 meeting-boundary behavior). `selectMeetings` drops ended events only at
@@ -195,22 +186,30 @@ export function currentInstance(
 }
 
 /**
- * Classify what the key at `offset` should show, applying the today-only display
- * horizon (§5) over the still-current view ({@link currentInstance}, §9). The
- * countdown only counts to an event **starting today** (machine-local date); a
- * future-day event yields a "Free" + hint face; no still-current event at that
- * offset yields a plain "Free". The horizon rolls over at local midnight and the
- * boundary advances as events end, because both are re-derived from `now` on
- * every render tick.
+ * Classify what the key at `offset` should show, applying the configurable
+ * display horizon (§5) over the still-current view ({@link currentInstance}, §9).
+ * The countdown counts to an event starting **less than `horizonMs` from now**
+ * (an already-started, not-yet-dismissed event has a negative time-to-start and
+ * is always within horizon); an event further off yields a "Free" + hint face;
+ * no still-current event at that offset yields a plain "Free". The horizon is a
+ * duration, not a calendar day, so a meeting straddling local midnight is judged
+ * by how soon it is — re-derived from `now` on every render tick, so it also
+ * advances as events end.
  *
- * @param list    a {@link selectMeetings} result (ordered).
- * @param offset  the key's index into the still-current view (§3; default 0).
- * @param now     the reference instant.
+ * @param list      a {@link selectMeetings} result (ordered).
+ * @param offset    the key's index into the still-current view (§3; default 0).
+ * @param now       the reference instant.
+ * @param horizonMs the key's countdown horizon in ms (§3; default 24h).
  */
-export function displayHorizon(list: MeetingInstance[], offset: number, now: Date): DisplayHorizon {
+export function displayHorizon(
+  list: MeetingInstance[],
+  offset: number,
+  now: Date,
+  horizonMs: number,
+): DisplayHorizon {
   const instance = currentInstance(list, offset, now);
   if (!instance) return { kind: "none" };
-  return isSameLocalDay(instance.start, now)
-    ? { kind: "today", instance }
-    : { kind: "future", instance };
+  return instance.start.getTime() - now.getTime() < horizonMs
+    ? { kind: "within", instance }
+    : { kind: "beyond", instance };
 }

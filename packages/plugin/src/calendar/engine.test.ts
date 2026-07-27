@@ -136,10 +136,12 @@ describe("selectMeetings — recurrence & DST (§5)", () => {
   });
 });
 
-describe("displayHorizon — today-only horizon (§5)", () => {
+describe("displayHorizon — configurable duration horizon (§5)", () => {
   // Local noon keeps the ±hours arithmetic on the same / adjacent local day in
   // every machine timezone, so this test is tz-independent.
   const localNoon = new Date(2026, 5, 15, 12, 0, 0);
+  const H = 60 * 60 * 1000;
+  const H24 = 24 * H;
   const at = (offsetMs: number): MeetingInstance => ({
     start: new Date(localNoon.getTime() + offsetMs),
     end: new Date(localNoon.getTime() + offsetMs + 30 * 60 * 1000),
@@ -149,30 +151,54 @@ describe("displayHorizon — today-only horizon (§5)", () => {
     candidate: { tier: "b" },
   });
 
-  it("classifies a same-local-day event as a live countdown (today)", () => {
-    const today = at(60 * 60 * 1000); // +1h, same local day
-    const h = displayHorizon([today], 0, localNoon);
-    expect(h.kind).toBe("today");
-    expect(h).toMatchObject({ instance: today });
+  it("classifies an event within the horizon as a live countdown", () => {
+    const soon = at(H); // +1h, well within 24h
+    const h = displayHorizon([soon], 0, localNoon, H24);
+    expect(h.kind).toBe("within");
+    expect(h).toMatchObject({ instance: soon });
   });
 
-  it("classifies a future-day event as Free + hint (future)", () => {
-    const future = at(48 * 60 * 60 * 1000); // +2 days, a different local date
-    const h = displayHorizon([future], 0, localNoon);
-    expect(h.kind).toBe("future");
-    expect(h).toMatchObject({ instance: future });
+  it("classifies an event beyond the horizon as Free + hint", () => {
+    const far = at(48 * H); // +2 days, beyond 24h
+    const h = displayHorizon([far], 0, localNoon, H24);
+    expect(h.kind).toBe("beyond");
+    expect(h).toMatchObject({ instance: far });
+  });
+
+  it("counts down across local midnight when still within the horizon (the fix)", () => {
+    // +13h from local noon lands after local midnight (a *different* calendar
+    // date) but is only 13h away — the old same-day horizon wrongly showed Free.
+    const overnight = at(13 * H);
+    expect(overnight.start.getDate()).not.toBe(localNoon.getDate());
+    expect(displayHorizon([overnight], 0, localNoon, H24).kind).toBe("within");
+  });
+
+  it("treats an already-started (negative time-to-start) event as within horizon", () => {
+    const started = at(-5 * 60 * 1000); // began 5 min ago
+    expect(displayHorizon([started], 0, localNoon, H24).kind).toBe("within");
+  });
+
+  it("uses a strict threshold: exactly at the horizon is beyond, just under is within", () => {
+    expect(displayHorizon([at(H24)], 0, localNoon, H24).kind).toBe("beyond");
+    expect(displayHorizon([at(H24 - 1)], 0, localNoon, H24).kind).toBe("within");
+  });
+
+  it("respects a custom (non-24h) horizon", () => {
+    const twoHoursOut = at(2 * H);
+    expect(displayHorizon([twoHoursOut], 0, localNoon, 1 * H).kind).toBe("beyond");
+    expect(displayHorizon([twoHoursOut], 0, localNoon, 3 * H).kind).toBe("within");
   });
 
   it("returns none when the key's offset exceeds the list", () => {
-    expect(displayHorizon([], 0, localNoon)).toEqual({ kind: "none" });
-    expect(displayHorizon([at(3600_000)], 3, localNoon)).toEqual({ kind: "none" });
+    expect(displayHorizon([], 0, localNoon, H24)).toEqual({ kind: "none" });
+    expect(displayHorizon([at(H)], 3, localNoon, H24)).toEqual({ kind: "none" });
   });
 
   it("indexes the list by offset", () => {
-    const a = at(60 * 60 * 1000);
-    const b = at(2 * 60 * 60 * 1000);
-    expect(displayHorizon([a, b], 1, localNoon)).toMatchObject({
-      kind: "today",
+    const a = at(H);
+    const b = at(2 * H);
+    expect(displayHorizon([a, b], 1, localNoon, H24)).toMatchObject({
+      kind: "within",
       instance: b,
     });
   });

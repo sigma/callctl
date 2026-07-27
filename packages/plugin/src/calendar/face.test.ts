@@ -26,6 +26,7 @@ const base = (over: Partial<FaceInput>): FaceInput => ({
   list: [],
   offset: 0,
   now: new Date(2026, 6, 27, 9, 0),
+  horizonMs: 24 * 60 * 60 * 1000,
   ...over,
 });
 
@@ -66,10 +67,19 @@ describe("computeFace (§8 baseline)", () => {
     }
   });
 
-  it("shows Free + a day hint when the next event is a future day", () => {
+  it("shows Free + a day hint when the next event is beyond the horizon", () => {
     const now = new Date(2026, 6, 27, 9, 0); // Mon
+    // +24h exactly — at the (strict) 24h horizon, so still beyond → Free + hint.
     const face = computeFace(base({ now, list: [instance(new Date(2026, 6, 28, 9, 0))] })); // Tue
     expect(face).toEqual({ kind: "free", hint: "Tue 9:00" });
+  });
+
+  it("counts down across local midnight (event on the next date, still within horizon)", () => {
+    const now = new Date(2026, 6, 27, 23, 50);
+    // 20 min out but on the *next* local date — the old same-day horizon showed
+    // Free here; the duration horizon correctly counts down.
+    const face = computeFace(base({ now, list: [instance(new Date(2026, 6, 28, 0, 10), "Late")] }));
+    expect(face).toMatchObject({ kind: "countdown", title: "Late", time: "20:00" });
   });
 
   it("shows plain Free when there is no event at this offset", () => {
