@@ -11,6 +11,7 @@
  * freezes the countdown (§9).
  */
 
+import type { OpenTarget } from "../open/profile-open.js";
 import type { GlobalSettings } from "../settings.js";
 import { parseFeed, selectMeetings } from "./engine.js";
 import { calendarFallbackUrl, type FeedValidators, fetchFeed } from "./fetch.js";
@@ -29,6 +30,8 @@ export interface PollOptions {
 class FeedCache {
   readonly feedId: string;
   #url: string;
+  /** Optional tier-2 profile-open target (§7); reconciled from settings, never invalidates the cache. */
+  #open: OpenTarget | undefined;
   #validators: FeedValidators | undefined;
   #list: MeetingInstance[] = [];
   #status: FeedStatus = "loading";
@@ -64,6 +67,16 @@ class FeedCache {
   /** This feed's secret URL — read only to derive the tier-(b) origin (§6.4). */
   get url(): string {
     return this.#url;
+  }
+
+  /** This feed's tier-2 profile-open target (§7), or `undefined` for a default-browser open. */
+  get open(): OpenTarget | undefined {
+    return this.#open;
+  }
+
+  /** Update the tier-2 profile-open target (§7). Pure metadata — never touches the cache. */
+  setOpen(open: OpenTarget | undefined): void {
+    this.#open = open;
   }
 
   poll(now: Date, opts: PollOptions): Promise<void> {
@@ -143,8 +156,14 @@ export class CalendarService {
     for (const feed of global.feeds) {
       seen.add(feed.id);
       const existing = this.#feeds.get(feed.id);
-      if (existing) existing.setUrl(feed.url);
-      else this.#feeds.set(feed.id, new FeedCache(feed.id, feed.url));
+      if (existing) {
+        existing.setUrl(feed.url);
+        existing.setOpen(feed.open);
+      } else {
+        const cache = new FeedCache(feed.id, feed.url);
+        cache.setOpen(feed.open);
+        this.#feeds.set(feed.id, cache);
+      }
     }
     for (const id of this.#feeds.keys()) {
       if (!seen.has(id)) this.#feeds.delete(id);
@@ -173,6 +192,15 @@ export class CalendarService {
   calendarFallback(feedId: string): string | undefined {
     const url = this.#feeds.get(feedId)?.url;
     return url === undefined ? undefined : calendarFallbackUrl(url);
+  }
+
+  /**
+   * A feed's tier-2 profile-open target (§7), or `undefined` when it has no
+   * `open` config (→ the opener uses tier 1, the default browser) or the feed is
+   * unknown.
+   */
+  openConfig(feedId: string): OpenTarget | undefined {
+    return this.#feeds.get(feedId)?.open;
   }
 
   /** Force one conditional-GET poll of a single feed. No-op for an unknown feed. */

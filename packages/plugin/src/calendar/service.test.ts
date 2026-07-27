@@ -136,4 +136,25 @@ describe("CalendarService (§9)", () => {
     svc.configure(feeds());
     expect(svc.calendarFallback("nope")).toBeUndefined();
   });
+
+  it("openConfig reflects a feed's tier-2 open target, reconciling on re-configure (§7)", () => {
+    const svc = new CalendarService();
+    const withOpen = parseGlobalSettings({
+      feeds: [
+        {
+          id: "work",
+          name: "Work",
+          url: "https://host/secret.ics",
+          open: { browser: "chrome", profile: "Work" },
+        },
+      ],
+      pollIntervalMinutes: 15,
+    });
+    svc.configure(withOpen);
+    expect(svc.openConfig("work")).toEqual({ browser: "chrome", profile: "Work" });
+    // Unknown feed, and a feed reconfigured to drop `open`, both report undefined.
+    expect(svc.openConfig("nope")).toBeUndefined();
+    svc.configure(feeds());
+    expect(svc.openConfig("work")).toBeUndefined();
+  });
 });

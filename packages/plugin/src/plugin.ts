@@ -3,8 +3,9 @@ import streamDeck from "@elgato/streamdeck";
 import { buildActions } from "./actions/index.js";
 import { CalendarService } from "./calendar/service.js";
 import { handlePiTestMessage } from "./calendar/test-feed.js";
+import { openWithProfile } from "./open/profile-open.js";
 import { MeetRemote } from "./remote/meet-remote.js";
-import { parseGlobalSettings } from "./settings.js";
+import { type BrowserId, parseGlobalSettings } from "./settings.js";
 
 // The plugin hosts the local websocket server; the Chrome extension dials in.
 const remote = new MeetRemote({ log: (m) => streamDeck.logger.info(m) });
@@ -12,10 +13,14 @@ const remote = new MeetRemote({ log: (m) => streamDeck.logger.info(m) });
 // The Next-Meeting feed engine (§9): one shared cache registry across every key.
 const calendar = new CalendarService();
 
-// Press-to-open (§7 tier 1): the host performs the OS-level open into the
-// default browser; the plugin only forwards the URL and logs failures.
+// Press-to-open (§7): tier 1 delegates to the host (default browser); tier 2
+// execs into a feed's configured browser profile (`execFile`, no shell) and
+// degrades back to tier 1 on any launch failure. The plugin only forwards the
+// URL/target and logs failures.
 const nextMeetingDeps = {
   openUrl: (url: string) => streamDeck.system.openUrl(url),
+  openWith: (url: string, target: { browser: BrowserId; profile: string }) =>
+    openWithProfile(url, target),
   log: (message: string) => streamDeck.logger.info(message),
 };
 

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CalendarService } from "../calendar/service.js";
 import type { FeedSnapshot, MeetingInstance } from "../calendar/types.js";
+import type { OpenTarget } from "../open/profile-open.js";
 import { NextMeetingAction } from "./next-meeting-action.js";
 
 /** A tier-(a) instance spanning `[startMs, endMs]` (absolute epoch ms). */
@@ -30,6 +31,7 @@ function instance(
 function fakeService(opts: {
   snapshot?: FeedSnapshot;
   fallback?: string;
+  open?: OpenTarget;
 }): CalendarService & { poll: ReturnType<typeof vi.fn> } {
   const svc = {
     pollIntervalMinutes: 15,
@@ -37,6 +39,7 @@ function fakeService(opts: {
     poll: vi.fn(async () => {}),
     pollAll: vi.fn(async () => {}),
     calendarFallback: vi.fn(() => opts.fallback),
+    openConfig: vi.fn(() => opts.open),
   };
   return svc as unknown as CalendarService & { poll: ReturnType<typeof vi.fn> };
 }
@@ -134,7 +137,11 @@ describe("NextMeetingAction — press → open (§7)", () => {
   /** Appear a key, run `body`, then disappear it so the render interval is cleared. */
   function withKey(
     service: CalendarService,
-    deps: { openUrl?: (u: string) => Promise<void>; log?: (m: string) => void },
+    deps: {
+      openUrl?: (u: string) => Promise<void>;
+      openWith?: (u: string, t: OpenTarget) => Promise<void>;
+      log?: (m: string) => void;
+    },
     settings: Record<string, unknown>,
     body: (action: NextMeetingAction, key: ReturnType<typeof fakeKey>) => void,
   ): void {
@@ -204,6 +211,46 @@ describe("NextMeetingAction — press → open (§7)", () => {
       expect(openUrl).not.toHaveBeenCalled();
       expect(key.showAlert).toHaveBeenCalled();
     });
+  });
+
+  it("opens via the configured browser profile when the feed has an open config (tier 2)", () => {
+    const open: OpenTarget = { browser: "chrome", profile: "Work" };
+    const service = fakeService({ snapshot: { status: "ok", list: [surfaced()] }, open });
+    const openUrl = vi.fn(async () => {});
+    const openWith = vi.fn(async () => {});
+    withKey(service, { openUrl, openWith }, { feedId: "work", offset: 0 }, (action, key) => {
+      action.onKeyDown(keyDownEv(key));
+      expect(openWith).toHaveBeenCalledWith("https://meet.google.com/abc-def-ghi", open);
+      // Tier 2 handled it — no default-browser open, no alert.
+      expect(openUrl).not.toHaveBeenCalled();
+      expect(key.showAlert).not.toHaveBeenCalled();
+    });
+  });
+
+  it("degrades a failed profile open to tier 1 + showAlert + log (§7)", async () => {
+    const open: OpenTarget = { browser: "brave", profile: "Bad" };
+    const service = fakeService({ snapshot: { status: "ok", list: [surfaced()] }, open });
+    const openUrl = vi.fn(async () => {});
+    const openWith = vi.fn(async () => {
+      throw new Error("ENOENT: no such browser");
+    });
+    const log = vi.fn();
+    const action = new NextMeetingAction("uuid", service, { now, openUrl, openWith, log });
+    const key = fakeKey("k1");
+    vi.useFakeTimers();
+    try {
+      action.onWillAppear(appearEv(key, { feedId: "work", offset: 0 }));
+      expect(() => action.onKeyDown(keyDownEv(key))).not.toThrow();
+      // Let the rejected openWith and the tier-1 fallback microtasks flush.
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(openUrl).toHaveBeenCalledWith("https://meet.google.com/abc-def-ghi");
+      expect(key.showAlert).toHaveBeenCalled();
+      expect(log).toHaveBeenCalledWith(expect.stringContaining("ENOENT"));
+      action.onWillDisappear(disappearEv(key));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("is fire-and-forget: a rejected open is logged, never thrown", async () => {
