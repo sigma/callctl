@@ -36,6 +36,13 @@ const LEGACY_PORT_KEY = "port";
  */
 export type MidiDeviceRef = { id: string; name: string; manufacturer: string };
 
+/**
+ * Which MIDI inputs a transport binds: the `"all"` sentinel meaning "every
+ * connected input", or an explicit set of selected-device refs. This is the
+ * per-transport `retarget` config for {@link MidiTransport}.
+ */
+export type MidiDevices = "all" | MidiDeviceRef[];
+
 export type TransportConfig = {
   version: typeof CONFIG_VERSION;
   ws: {
@@ -49,7 +56,7 @@ export type TransportConfig = {
   midi: {
     enabled: boolean;
     /** `"all"` is a first-class mode meaning "every connected input". */
-    devices: "all" | MidiDeviceRef[];
+    devices: MidiDevices;
   };
 };
 
