@@ -1,7 +1,9 @@
 import { REACTION_SLUGS } from "@callctl/protocol";
 import type { SingletonAction } from "@elgato/streamdeck";
 
+import type { CalendarService } from "../calendar/service.js";
 import type { MeetRemote } from "../remote/meet-remote.js";
+import { NextMeetingAction } from "./next-meeting-action.js";
 import { SimpleAction } from "./simple-action.js";
 import { ToggleAction } from "./toggle-action.js";
 
@@ -18,7 +20,7 @@ const img = (basename: string) => `imgs/actions/${basename}`;
  * `DefaultTriggers` / `DefaultStateHandlers` maps (plus hand + reactions).
  * The hand-written manifest must list a matching `Actions[]` entry per UUID.
  */
-export function buildActions(remote: MeetRemote): SingletonAction[] {
+export function buildActions(remote: MeetRemote, calendar: CalendarService): SingletonAction[] {
   const actions: SingletonAction[] = [];
 
   // Stateless "buttons": pressing fires one command. The staged image basename
@@ -89,6 +91,9 @@ export function buildActions(remote: MeetRemote): SingletonAction[] {
       remote,
     ),
   );
+
+  // The Next-Meeting countdown key (§2) — timer-driven, renders its own image.
+  actions.push(new NextMeetingAction(uuid("next-meeting"), calendar));
 
   return actions;
 }

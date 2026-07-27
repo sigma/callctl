@@ -360,6 +360,19 @@
 					"TitleAlignment": "middle"
 				}
 			]
+		},
+		{
+			"Name": "Next Meeting",
+			"UUID": "dev.yrh.callctl.next-meeting",
+			"Icon": "imgs/actions/next_meeting",
+			"Tooltip": "Countdown to your next meeting; press to open the join link",
+			"SupportedInMultiActions": false,
+			"States": [
+				{
+					"Image": "imgs/actions/next_meeting_key",
+					"TitleAlignment": "middle"
+				}
+			]
 		}
 	]
 }
