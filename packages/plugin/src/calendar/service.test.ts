@@ -122,4 +122,18 @@ describe("CalendarService (§9)", () => {
     await Promise.all([svc.poll("work", NOW), svc.poll("work", NOW)]);
     expect(calls()).toBe(1);
   });
+
+  it("calendarFallback derives the feed origin without a poll (§6.4)", () => {
+    const svc = new CalendarService();
+    svc.configure(feeds("https://calendar.example/ical/SECRET/basic.ics"));
+    const fallback = svc.calendarFallback("work");
+    expect(fallback).toBe("https://calendar.example");
+    expect(fallback).not.toContain("SECRET");
+  });
+
+  it("calendarFallback is undefined for an unknown feed", () => {
+    const svc = new CalendarService();
+    svc.configure(feeds());
+    expect(svc.calendarFallback("nope")).toBeUndefined();
+  });
 });

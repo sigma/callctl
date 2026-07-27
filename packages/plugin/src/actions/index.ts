@@ -3,7 +3,7 @@ import type { SingletonAction } from "@elgato/streamdeck";
 
 import type { CalendarService } from "../calendar/service.js";
 import type { MeetRemote } from "../remote/meet-remote.js";
-import { NextMeetingAction } from "./next-meeting-action.js";
+import { NextMeetingAction, type NextMeetingDeps } from "./next-meeting-action.js";
 import { SimpleAction } from "./simple-action.js";
 import { ToggleAction } from "./toggle-action.js";
 
@@ -20,7 +20,11 @@ const img = (basename: string) => `imgs/actions/${basename}`;
  * `DefaultTriggers` / `DefaultStateHandlers` maps (plus hand + reactions).
  * The hand-written manifest must list a matching `Actions[]` entry per UUID.
  */
-export function buildActions(remote: MeetRemote, calendar: CalendarService): SingletonAction[] {
+export function buildActions(
+  remote: MeetRemote,
+  calendar: CalendarService,
+  nextMeetingDeps: NextMeetingDeps = {},
+): SingletonAction[] {
   const actions: SingletonAction[] = [];
 
   // Stateless "buttons": pressing fires one command. The staged image basename
@@ -92,8 +96,9 @@ export function buildActions(remote: MeetRemote, calendar: CalendarService): Sin
     ),
   );
 
-  // The Next-Meeting countdown key (§2) — timer-driven, renders its own image.
-  actions.push(new NextMeetingAction(uuid("next-meeting"), calendar));
+  // The Next-Meeting countdown key (§2) — timer-driven, renders its own image,
+  // and opens the join URL on press (§7) via the injected host-open dep.
+  actions.push(new NextMeetingAction(uuid("next-meeting"), calendar, nextMeetingDeps));
 
   return actions;
 }

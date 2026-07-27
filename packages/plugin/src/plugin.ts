@@ -11,7 +11,14 @@ const remote = new MeetRemote({ log: (m) => streamDeck.logger.info(m) });
 // The Next-Meeting feed engine (§9): one shared cache registry across every key.
 const calendar = new CalendarService();
 
-for (const action of buildActions(remote, calendar)) {
+// Press-to-open (§7 tier 1): the host performs the OS-level open into the
+// default browser; the plugin only forwards the URL and logs failures.
+const nextMeetingDeps = {
+  openUrl: (url: string) => streamDeck.system.openUrl(url),
+  log: (message: string) => streamDeck.logger.info(message),
+};
+
+for (const action of buildActions(remote, calendar, nextMeetingDeps)) {
   streamDeck.actions.registerAction(action);
 }
 
