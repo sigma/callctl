@@ -1,5 +1,6 @@
 import type { SelectorConfig } from "@callctl/protocol";
 import { loadConfig, type MidiDevices, type TransportConfig, wsPort } from "./config.js";
+import { isMeetingUrl } from "./meet/location.js";
 import { selectors } from "./meet/selectors.js";
 import { loadPlugins } from "./plugins/index.js";
 import { MidiTransport } from "./transport/midi-transport.js";
@@ -97,6 +98,9 @@ function init(
       local,
       onChanged,
       midi: midiSource,
+      // The content script matches every meet.google.com/* page; only surface
+      // the widget in an actual meeting room, not on landing/home.
+      visibleWhen: isMeetingUrl,
       status: {
         snapshot: () => registry.snapshot(),
         subscribe: (onChange) => registry.subscribe(onChange),

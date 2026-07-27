@@ -114,6 +114,14 @@ export type WidgetDeps = {
   midi?: MidiInputSource;
   /** Live transport liveness for the row dots; {@link NO_TRANSPORT_STATUS} when unwired. */
   status?: TransportStatusSource;
+  /**
+   * Gate on the current URL: the host is attached only while this returns true,
+   * re-evaluated on every survival tick so it tracks Meet's SPA navigation
+   * (landing → room → landing) without a content-script reload. Defaults to
+   * always-visible; the content script passes {@link isMeetingUrl} so the widget
+   * stays hidden on the landing/home pages.
+   */
+  visibleWhen?: (href: string) => boolean;
   doc?: Document;
 };
 
@@ -206,6 +214,7 @@ export function mountWidget(deps: WidgetDeps): TransportWidget {
   const doc = deps.doc ?? document;
   const source = deps.midi ?? NO_MIDI_INPUTS;
   const statusSource = deps.status ?? NO_TRANSPORT_STATUS;
+  const visibleWhen = deps.visibleWhen ?? (() => true);
 
   // Self-owned Shadow-DOM host on <html>: isolates Meet's global CSS from the
   // widget (and vice-versa) and gives the survival observer one node to guard.
@@ -228,7 +237,9 @@ export function mountWidget(deps: WidgetDeps): TransportWidget {
   const midiList = el(doc, "div", { className: "midiList" });
 
   const body = el(doc, "div", { className: "body" }, [sd.row, dev.row, midi.row, midiList]);
-  const card = el(doc, "div", { className: "card" }, [head, body]);
+  // Always mount collapsed — the compact pill is the resting state; the user
+  // unfolds to reach the controls and it folds itself away again on reload.
+  const card = el(doc, "div", { className: "card folded" }, [head, body]);
   shadow.append(card);
 
   head.addEventListener("click", () => card.classList.toggle("folded"));
@@ -344,11 +355,17 @@ export function mountWidget(deps: WidgetDeps): TransportWidget {
   // A transport connecting/dropping (or being enabled/disabled) repaints the dots.
   const unsubscribeStatus = statusSource.subscribe(paint);
 
-  // Re-append the host if Meet ever detaches it (a re-render / <body> swap).
+  // Keep the host's presence in sync with two things at once: whether we're on a
+  // meeting URL (attach only there — Meet is an SPA, so `visibleWhen` is re-read
+  // every tick and tracks landing → room → landing without a reload) and whether
+  // Meet has detached the host in a re-render / <body> swap (re-append it).
   // Coalesced to one guard per microtask, like model.ts's rescan.
-  const attach = (): void => {
-    if (!host.isConnected) {
+  const sync = (): void => {
+    const wanted = visibleWhen(doc.location?.href ?? "");
+    if (wanted && !host.isConnected) {
       doc.documentElement.append(host);
+    } else if (!wanted && host.isConnected) {
+      host.remove();
     }
   };
   let guardQueued = false;
@@ -359,11 +376,11 @@ export function mountWidget(deps: WidgetDeps): TransportWidget {
     guardQueued = true;
     queueMicrotask(() => {
       guardQueued = false;
-      attach();
+      sync();
     });
   });
   observer.observe(doc.documentElement, { childList: true, subtree: true });
-  attach();
+  sync();
 
   // Initial paint from the persisted config.
   void loadConfig(deps.local).then((c) => {
