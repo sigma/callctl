@@ -335,6 +335,88 @@ describe("NextMeetingAction — press → open (§7)", () => {
   });
 });
 
+describe("NextMeetingAction — per-key render clock (contract #2)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** An imminent countdown: starts 25 s out (imminent, gently blinking), +30m long. */
+  const imminentSnapshot = (): FeedSnapshot => ({
+    status: "ok",
+    list: [instance(25_000, 25_000 + 30 * 60_000, { title: "Sync" })],
+  });
+
+  it("arms a per-key render timer on appear and clears it on disappear", () => {
+    // Default now → the mocked system clock, so the self-rescheduling timers fire
+    // against the same time base we advance.
+    const action = new NextMeetingAction("uuid", fakeService({ snapshot: imminentSnapshot() }));
+    const key = fakeKey("k1");
+
+    action.onWillAppear(appearEv(key, { feedId: "work", offset: 0 }));
+    expect(key.setImage).toHaveBeenCalled(); // the appear paint
+    expect(vi.getTimerCount()).toBeGreaterThan(0); // render + poll clocks armed
+
+    vi.advanceTimersByTime(2_000);
+    const paintedWhileAppeared = key.setImage.mock.calls.length;
+    expect(paintedWhileAppeared).toBeGreaterThan(1); // the per-key clock repainted
+
+    action.onWillDisappear(disappearEv(key));
+    expect(vi.getTimerCount()).toBe(0); // both render and poll clocks cleared
+
+    vi.advanceTimersByTime(5_000);
+    expect(key.setImage.mock.calls.length).toBe(paintedWhileAppeared); // no orphan repaints
+  });
+
+  it("re-derives the render clock on a settings change without stacking timers", () => {
+    const snapshot: FeedSnapshot = {
+      status: "ok",
+      list: [instance(25_000, 25_000 + 30 * 60_000), instance(40_000, 40_000 + 30 * 60_000)],
+    };
+    const action = new NextMeetingAction("uuid", fakeService({ snapshot }));
+    const key = fakeKey("k1");
+
+    action.onWillAppear(appearEv(key, { feedId: "work", offset: 0 }));
+    expect(vi.getTimerCount()).toBe(2); // one render timer + one poll timer
+    const before = key.setImage.mock.calls.length;
+
+    action.onDidReceiveSettings(appearEv(key, { feedId: "work", offset: 1 }));
+    expect(key.setImage.mock.calls.length).toBeGreaterThan(before); // immediate repaint
+    expect(vi.getTimerCount()).toBe(2); // render timer replaced, not stacked
+
+    action.onWillDisappear(disappearEv(key));
+  });
+
+  it("repaints exactly on blink/second edges through the imminent window (no stutter)", () => {
+    // The regression guard for the "stuck for a frame every few frames" stutter:
+    // with a fixed 500 ms tick the 600 ms blink aliased; the per-key clock instead
+    // fires *on* each blink/second edge, so every repaint lands on the grid.
+    const instants: number[] = [];
+    const key = {
+      ...fakeKey("k1"),
+      setImage: vi.fn(async () => {
+        instants.push(Date.now()); // mocked clock → the exact instant this paint ran
+      }),
+    };
+    const action = new NextMeetingAction("uuid", fakeService({ snapshot: imminentSnapshot() }));
+
+    action.onWillAppear(appearEv(key, { feedId: "work", offset: 0 }));
+    vi.advanceTimersByTime(24_000); // stay strictly inside the imminent window
+    action.onWillDisappear(disappearEv(key));
+
+    for (const t of instants) {
+      if (t === 0) continue; // the appear / forced-poll paints at t=0
+      // 600 ms = imminent blink half-period; 1000 ms = the MM:SS second edge.
+      expect(t % 600 === 0 || t % 1000 === 0).toBe(true);
+    }
+    // Blink edges (not only whole seconds) actually drove repaints.
+    expect(instants.some((t) => t % 600 === 0 && t % 1000 !== 0)).toBe(true);
+  });
+});
+
 describe("NextMeetingAction — setImage encoding", () => {
   const now = () => new Date(0);
 

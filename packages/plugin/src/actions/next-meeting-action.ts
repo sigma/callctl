@@ -14,15 +14,12 @@ import {
   isJoined,
   joinIdentity,
 } from "../calendar/engine.js";
-import { computeFace } from "../calendar/face.js";
+import { computeFace, msToNextVisibleChange } from "../calendar/face.js";
 import { renderFaceSvg } from "../calendar/render.js";
 import type { CalendarService } from "../calendar/service.js";
 import type { MeetingInstance } from "../calendar/types.js";
 import type { OpenTarget } from "../open/profile-open.js";
 import { type NextMeetingSettings, parseKeySettings } from "../settings.js";
-
-/** How often the render clock repaints every appeared key (§9). */
-const RENDER_TICK_MS = 500;
 
 /**
  * Wrap an SVG document as a base64 `data:` URI for `KeyAction.setImage`. Although
@@ -73,10 +70,12 @@ export interface NextMeetingDeps {
 
 /**
  * The `NextMeetingAction` (§2) — the plugin's first timer-driven, title-rendering
- * action. It owns the **render clock** (a 500 ms local tick that repaints every
- * appeared key off the cached event set, §9) and the **feed-poll clock** (a
- * self-rescheduling timer at `pollIntervalMinutes`, §9), plus the forced startup
- * poll when a key appears or its feed changes.
+ * action. It owns the **render clock** (contract #2: a per-key self-rescheduling
+ * timer that repaints each appeared key off the cached event set *exactly* when
+ * that key's face next changes, so the imminent/late flash can't alias a fixed
+ * tick) and the **feed-poll clock** (a self-rescheduling timer at
+ * `pollIntervalMinutes`, §9), plus the forced startup poll when a key appears or
+ * its feed changes.
  *
  * All the decision logic lives outside this class — {@link CalendarService}
  * (fetch/parse/select/cache), {@link computeFace} (which face, §8), and
@@ -113,7 +112,13 @@ export class NextMeetingAction extends SingletonAction {
    * signal clears.
    */
   readonly #joinedOccurrences = new Set<string>();
-  #renderTimer: ReturnType<typeof setInterval> | undefined;
+  /**
+   * Per-key render clock (contract #2): one self-rescheduling `setTimeout` per
+   * appeared key, fired exactly when that key's face next changes
+   * ({@link msToNextVisibleChange}) instead of on a shared fixed tick. Keyed by
+   * action id; started on appear, re-derived on every paint, cleared on disappear.
+   */
+  readonly #renderTimers = new Map<string, ReturnType<typeof setTimeout>>();
   #pollTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(uuid: string, service: CalendarService, deps: NextMeetingDeps = {}) {
@@ -136,16 +141,22 @@ export class NextMeetingAction extends SingletonAction {
     if (!ev.action.isKey()) return;
     const settings = parseKeySettings(ev.payload.settings);
     this.#keys.set(ev.action.id, { action: ev.action, settings });
-    this.#startClocks();
+    this.#scheduleNextPoll();
     // Forced startup poll (§9): fetch this feed now, repaint as soon as it lands.
     this.#forcePoll(ev.action.id, settings.feedId);
+    // First paint arms this key's render clock (contract #2); it self-reschedules.
     this.#paintKey(ev.action.id);
   }
 
   override onWillDisappear(ev: WillDisappearEvent): void {
+    const timer = this.#renderTimers.get(ev.action.id);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      this.#renderTimers.delete(ev.action.id);
+    }
     this.#keys.delete(ev.action.id);
     this.#currentEnd.delete(ev.action.id);
-    if (this.#keys.size === 0) this.#stopClocks();
+    if (this.#keys.size === 0) this.#stopPollClock();
   }
 
   override onDidReceiveSettings(ev: DidReceiveSettingsEvent): void {
@@ -274,18 +285,7 @@ export class NextMeetingAction extends SingletonAction {
 
   // ---- clocks ------------------------------------------------------------
 
-  #startClocks(): void {
-    if (this.#renderTimer === undefined) {
-      this.#renderTimer = setInterval(() => this.#paintAll(), RENDER_TICK_MS);
-    }
-    this.#scheduleNextPoll();
-  }
-
-  #stopClocks(): void {
-    if (this.#renderTimer !== undefined) {
-      clearInterval(this.#renderTimer);
-      this.#renderTimer = undefined;
-    }
+  #stopPollClock(): void {
     if (this.#pollTimer !== undefined) {
       clearTimeout(this.#pollTimer);
       this.#pollTimer = undefined;
@@ -331,6 +331,23 @@ export class NextMeetingAction extends SingletonAction {
     for (const id of this.#keys.keys()) this.#paintKey(id);
   }
 
+  /**
+   * (Re)arm a key's render clock (contract #2): schedule its next repaint exactly
+   * `delay` ms out (already clamped to `[1, MAX_MS]` by
+   * {@link msToNextVisibleChange}). Clears any pending timer first, so every paint
+   * — tick, forced poll, or settings change — re-derives the cadence rather than
+   * stacking timers.
+   */
+  #scheduleNextPaint(id: string, delay: number): void {
+    const existing = this.#renderTimers.get(id);
+    if (existing !== undefined) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      this.#renderTimers.delete(id);
+      this.#paintKey(id);
+    }, delay);
+    this.#renderTimers.set(id, timer);
+  }
+
   #paintKey(id: string): void {
     const entry = this.#keys.get(id);
     if (entry === undefined) return;
@@ -358,17 +375,20 @@ export class NextMeetingAction extends SingletonAction {
     if (current !== undefined) this.#currentEnd.set(id, current.end.getTime());
     else this.#currentEnd.delete(id);
 
-    const face = computeFace({
+    const faceInput = {
       configured: snapshot !== undefined,
-      status: snapshot?.status ?? "loading",
+      status: snapshot?.status ?? ("loading" as const),
       list,
       offset: settings.offset,
       now,
       horizonMs: settings.horizonMinutes * 60 * 1000,
       graceMs: settings.graceMinutes * 60 * 1000,
       heldKeys: this.#joinedOccurrences,
-    });
-    void action.setImage(svgToImageUri(renderFaceSvg(face)));
+    };
+    void action.setImage(svgToImageUri(renderFaceSvg(computeFace(faceInput))));
+    // Re-arm the render clock off the *same* inputs we just painted: repaint
+    // exactly when this face next moves (contract #2), never on a fixed tick.
+    this.#scheduleNextPaint(id, msToNextVisibleChange(faceInput));
   }
 
   /**
