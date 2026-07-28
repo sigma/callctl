@@ -174,13 +174,6 @@
       </div>
     </div>
     <div class="row">
-      <label for="grace">Grace (min)</label>
-      <div class="control">
-        <input type="number" id="grace" min="0" step="1" value="10" />
-        <span class="hint" style="margin: 0">minutes late before the key advances</span>
-      </div>
-    </div>
-    <div class="row">
       <label for="horizon">Horizon (h)</label>
       <div class="control">
         <input type="number" id="horizon" min="1" step="1" value="24" />
@@ -270,7 +263,7 @@
 
       // ── Local state (mirrors the §3 schema) ─────────────────────────────
       let global = { feeds: [], pollIntervalMinutes: 15 };
-      let keySettings = { feedId: "", offset: 0, graceMinutes: 10, horizonMinutes: 1440 };
+      let keySettings = { feedId: "", offset: 0, horizonMinutes: 1440 };
       const pendingTests = new Map(); // requestId -> status element
 
       const $ = (sel, root = document) => root.querySelector(sel);
@@ -318,13 +311,11 @@
         keySettings = {
           feedId: typeof s.feedId === "string" ? s.feedId : "",
           offset: Number.isFinite(s.offset) ? Math.max(0, Math.trunc(s.offset)) : 0,
-          graceMinutes: Number.isFinite(s.graceMinutes) ? Math.max(0, s.graceMinutes) : 10,
           // Stored in minutes (matches the schema); the field is shown in hours.
           horizonMinutes: Number.isFinite(s.horizonMinutes) && s.horizonMinutes > 0 ? s.horizonMinutes : 1440,
         };
         $("#feed").value = keySettings.feedId;
         $("#offset").value = String(keySettings.offset);
-        $("#grace").value = String(keySettings.graceMinutes);
         $("#horizon").value = String(Math.round(keySettings.horizonMinutes / 60));
         renderFeedOptions();
       }
@@ -337,12 +328,6 @@
         const n = parseInt(e.target.value, 10);
         keySettings.offset = Number.isFinite(n) && n >= 0 ? n : 0;
         e.target.value = String(keySettings.offset);
-        setSettings(keySettings);
-      });
-      $("#grace").addEventListener("change", (e) => {
-        const n = parseInt(e.target.value, 10);
-        keySettings.graceMinutes = Number.isFinite(n) && n >= 0 ? n : 10;
-        e.target.value = String(keySettings.graceMinutes);
         setSettings(keySettings);
       });
       $("#horizon").addEventListener("change", (e) => {

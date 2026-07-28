@@ -42,8 +42,6 @@ export interface NextMeetingSettings {
   feedId: string;
   /** Index into the ordered event list (§5); default 0. */
   offset: number;
-  /** Late-state dismissal grace in minutes (§10); default 10. Consumed in #59/#62. */
-  graceMinutes: number;
   /**
    * Countdown horizon in minutes (§5): an event whose start is **less than** this
    * far in the future gets the live countdown face; anything further off shows as
@@ -58,8 +56,6 @@ export interface NextMeetingSettings {
 export const DEFAULT_POLL_INTERVAL_MINUTES = 15;
 /** Default per-key list offset (§5). */
 export const DEFAULT_OFFSET = 0;
-/** Default late-state grace (§10). */
-export const DEFAULT_GRACE_MINUTES = 10;
 /** Default countdown horizon (§5): 24h. */
 export const DEFAULT_HORIZON_MINUTES = 24 * 60;
 
@@ -117,18 +113,16 @@ export function parseGlobalSettings(raw: unknown): GlobalSettings {
 
 /**
  * Coerce raw per-key settings into a {@link NextMeetingSettings}, applying
- * defaults. A fresh key has `{}` settings → `{ feedId: "", offset: 0,
- * graceMinutes: 10 }` (unconfigured).
+ * defaults. A fresh key has `{}` settings → `{ feedId: "", offset: 0 }`
+ * (unconfigured).
  */
 export function parseKeySettings(raw: unknown): NextMeetingSettings {
   const rec = isRecord(raw) ? raw : {};
   const offset = Math.trunc(num(rec.offset, DEFAULT_OFFSET));
-  const grace = num(rec.graceMinutes, DEFAULT_GRACE_MINUTES);
   const horizon = num(rec.horizonMinutes, DEFAULT_HORIZON_MINUTES);
   return {
     feedId: str(rec.feedId),
     offset: offset >= 0 ? offset : DEFAULT_OFFSET,
-    graceMinutes: grace >= 0 ? grace : DEFAULT_GRACE_MINUTES,
     // A non-positive horizon would never surface a countdown — fall back rather
     // than let the key sit on "Free" forever.
     horizonMinutes: horizon > 0 ? horizon : DEFAULT_HORIZON_MINUTES,

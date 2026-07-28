@@ -151,8 +151,8 @@ export function isJoined(inst: MeetingInstance, joinedKey: string | null, now: D
  *
  * Every instance stays current until its own `DTEND` (§9) — dismissal here never
  * drops a meeting merely for being late. A never-joined late meeting keeps
- * surfacing (its flash calms to a static state at `start + graceMinutes`, an §8
- * *render* concern — not this function's) until `DTEND`, at which point
+ * surfacing (its flash calms to a static state at the fixed §10 grace window past
+ * `start`, an §8 *render* concern — not this function's) until `DTEND`, at which point
  * {@link currentInstance}'s `end > now` filter advances the key like any other
  * boundary. A **held** meeting (one whose {@link joinIdentity} is in `heldKeys`,
  * i.e. you joined it this session) is likewise kept until its `DTEND`, rendered

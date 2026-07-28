@@ -92,7 +92,6 @@ interface NamedFeed {
 interface NextMeetingSettings {
   feedId: string;                // which global feed this key tracks (no cross-feed merge)
   offset: number;                // index into the ordered event list; default 0  (#41)
-  graceMinutes: number;          // late-flash duration (flash → steady overdue); default 10  (#48)
   horizonMinutes: number;        // countdown horizon (within N min of start); default 1440 (24h)
 }
 ```
@@ -292,8 +291,8 @@ Escalation states:
 | normal | `> 5 min` | slate | steady |
 | approaching | `≤ 5 min` | orange | steady |
 | imminent | `≤ 30 s` | red | **gentle blink** (~1.2 s period) |
-| late | past start (`< 0`), within grace, not joined | flashing red | **hard flash** (~0.9 s period), counts **up** `+MM:SS` |
-| overdue | past `start + graceMinutes`, still never joined | steady red | **no flash** — the alarm calms to a steady glyph, still counting **up** `+MM:SS` |
+| late | past start (`< 0`), within the grace window, not joined | flashing red | **hard flash** (~0.9 s period), counts **up** `+MM:SS` |
+| overdue | past `start + 5 min`, still never joined | steady red | **no flash** — the alarm calms to a steady glyph, still counting **up** `+MM:SS` |
 | in-call | joined this session (started event) | teal, steady | **hold current until end** — counts **down** to `DTEND` on a distinct field (§10) |
 
 Non-countdown states:
@@ -303,7 +302,7 @@ Non-countdown states:
 - **Cold-start error** (§9): a **dedicated error/attention state** — warning glyph / muted red (e.g. `No data` / `!`) — that is **visually distinct** from both green "Free" and the setup prompt.
 
 **No late state advances the key early.** A surfaced meeting stays current until its `DTEND` (§9) regardless of lateness — nothing is dropped for being late. The two timers only change *how it looks*, never *whether it shows*:
-- **Grace timer** (`start + graceMinutes`): ends the **flash**. Before it, `late` (flashing red); after it, `overdue` (steady red). The meeting keeps showing either way.
+- **Grace timer** (`start + 5 min`, hard-wired to the seconds-countdown window): ends the **flash**. Before it, `late` (flashing red); after it, `overdue` (steady red). The meeting keeps showing either way.
 - **Join-proof** (§10): swaps the red state for the calm **in-call** teal countdown and holds it — **durably**, even after you leave the call — until `DTEND`.
 
 At `DTEND` the boundary logic (§9) advances the selection, the one and only advance.
@@ -329,7 +328,7 @@ A fixed 500 ms local timer does pure arithmetic (`now` vs the cached event set):
 ### Meeting-boundary behavior
 
 - The current event stays current until its scheduled `end` (§5 sort governs ordering; `end > now` governs currency) — **the only advance**. Nothing is dropped for being late.
-- Past `start` → late flash `+MM:SS`, calming to steady `overdue` at `start + graceMinutes` (§8, §10); at `end` → advance to the next list element.
+- Past `start` → late flash `+MM:SS`, calming to steady `overdue` at `start + 5 min` (the fixed grace window, §8, §10); at `end` → advance to the next list element.
 - **Join holds, it does not advance:** a §10 in-call signal swaps the red state for the in-call countdown to `DTEND`, keeping the meeting current and durably held (survives leaving) until `DTEND` — the same boundary as every other meeting.
 
 ### Freshness / fetch-failure
@@ -372,8 +371,8 @@ The Leave button renders only once admitted and in the call — this avoids fals
 
 Because the extension is optional, a **time-based fallback is primary and always on** — but it governs only the **flash**, not whether the meeting shows:
 
-- **`graceMinutes` default = 10**, exposed as a per-key Property Inspector setting (§3, §11).
-- Before `start + graceMinutes` a never-joined late meeting **flashes** (`late`); after it, the flash **calms to steady** (`overdue`). Either way the meeting stays surfaced until its `DTEND` (§9) — the grace timer no longer dismisses or advances anything.
+- **The grace window is fixed at 5 minutes** — hard-wired to the seconds-countdown window (`SECONDS_WINDOW_MS`) so the flash lasts exactly as long as the `+MM:SS` glyph shows seconds, then goes quiet. Not a setting (the former per-key `graceMinutes` was retired).
+- Before `start + 5 min` a never-joined late meeting **flashes** (`late`); after it, the flash **calms to steady** (`overdue`). Either way the meeting stays surfaced until its `DTEND` (§9) — the grace timer no longer dismisses or advances anything.
 
 Being joined overrides the red states entirely: the meeting is held as the calm in-call countdown until its `DTEND`.
 
@@ -391,7 +390,7 @@ The plugin's first Property Inspector — one HTML file, present on every Next-M
 **Layout:**
 
 1. **Per-key** `Feed: [ ▾ ]` dropdown, populated from the global feed list; stores `feedId`.
-2. **Per-key** `Offset: [ 0 ]` (default 0) and `Grace (min): [ 10 ]` (default 10).
+2. **Per-key** `Offset: [ 0 ]` (default 0) and `Horizon (h): [ 24 ]` (default 24h). The late-flash grace window is fixed at 5 minutes and is **not** exposed as a setting.
 3. Expandable **"Manage feeds (global)"** editor — rows of `[name] [url] [x]` + `[+ Add feed]`, writing the global `feeds[]` list. For each feed:
    - The **URL** field is **masked with a 👁 reveal toggle**.
    - On entry, **validate the scheme**, **rewrite `webcal://` → `https://`**, and reject non-`http(s)`.

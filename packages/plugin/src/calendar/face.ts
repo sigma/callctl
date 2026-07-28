@@ -21,8 +21,9 @@ import type { FeedStatus, MeetingInstance } from "./types.js";
  * - `normal` — `> 5 min`, steady slate.
  * - `approaching` — `≤ 5 min`, steady orange.
  * - `imminent` — `≤ 30 s` (still before start), red with a gentle blink.
- * - `late` — past start but within `graceMinutes`, flashing red counting **up** `+MM:SS`.
- * - `overdue` — past `start + graceMinutes` and still never joined: the flash
+ * - `late` — past start but within the {@link GRACE_MS} flash window, flashing
+ *   red counting **up** `+MM:SS`.
+ * - `overdue` — past `start + GRACE_MS` and still never joined: the flash
  *   calms to a **steady** red (no blink), still counting **up** `+MM:SS`. The
  *   meeting is *not* dropped — it stays until its `DTEND` (§9).
  */
@@ -30,6 +31,14 @@ export type Escalation = "normal" | "approaching" | "imminent" | "late" | "overd
 
 /** `≤ 5 min` to start → approaching (§8). */
 const APPROACHING_MS = 5 * 60 * 1000;
+/**
+ * Late-flash window (§8/§10): past start, the flash hard-flashes for this long
+ * and then calms to steady `overdue`. Hard-wired to {@link SECONDS_WINDOW_MS} so
+ * the flash lasts *exactly* as long as the countdown still shows seconds — once
+ * the `+MM:SS` glyph coarsens to `+42m`, the seconds no longer matter and the
+ * alarm goes quiet. (Formerly the per-key `graceMinutes` setting; retired.)
+ */
+const GRACE_MS = SECONDS_WINDOW_MS;
 /** `≤ 30 s` to start → imminent (§8). */
 const IMMINENT_MS = 30 * 1000;
 /** Imminent's gentle blink: ~1.2 s period → 600 ms half-cycle (§8). */
@@ -39,11 +48,11 @@ const LATE_FLASH_HALF_MS = 450;
 
 /**
  * Classify the §8 escalation from the signed ms-to-start (`start − now`), with
- * the flash calming to steady `overdue` once past `graceMs` (the §10 grace no
- * longer *dismisses*, it only ends the flashing).
+ * the flash calming to steady `overdue` once past {@link GRACE_MS} (the §10 grace
+ * no longer *dismisses*, it only ends the flashing).
  */
-function escalationFor(msToStart: number, graceMs: number): Escalation {
-  if (msToStart < -graceMs) return "overdue";
+function escalationFor(msToStart: number): Escalation {
+  if (msToStart < -GRACE_MS) return "overdue";
   if (msToStart < 0) return "late";
   if (msToStart <= IMMINENT_MS) return "imminent";
   if (msToStart <= APPROACHING_MS) return "approaching";
@@ -105,8 +114,6 @@ export interface FaceInput {
   now: Date;
   /** The key's countdown horizon in ms (§3/§5; default 24h). */
   horizonMs: number;
-  /** The key's late-state grace in ms (§3/§10): flash → steady `overdue` cutoff. */
-  graceMs: number;
   /** {@link joinIdentity} strings of meetings joined this session (§10) — held in-call. */
   heldKeys: ReadonlySet<string>;
 }
@@ -118,7 +125,7 @@ export interface FaceInput {
  * horizon (§5, "within `horizonMs` of start") decides countdown vs. Free.
  */
 export function computeFace(input: FaceInput): KeyFace {
-  const { configured, status, list, offset, now, horizonMs, graceMs, heldKeys } = input;
+  const { configured, status, list, offset, now, horizonMs, heldKeys } = input;
 
   if (!configured) return { kind: "unconfigured" };
   if (status === "cold-error") return { kind: "error" };
@@ -139,7 +146,7 @@ export function computeFace(input: FaceInput): KeyFace {
         };
       }
       const msToStart = horizon.instance.start.getTime() - now.getTime();
-      const escalation = escalationFor(msToStart, graceMs);
+      const escalation = escalationFor(msToStart);
       return {
         kind: "countdown",
         title: horizon.instance.title,
@@ -231,7 +238,8 @@ function floorEdge(t: number, unit: number): number {
  * - **blink edge** — for an `imminent`/`late` countdown ({@link nextBlinkEdge}).
  * - **tier / escalation boundaries** — the signed-time thresholds where the band
  *   or escalation flips: `±SECONDS_WINDOW_MS`, the 30 s imminent mark, `start`
- *   (imminent→late), `start + grace` (late→overdue, flash → steady), `±HOUR_MS`.
+ *   (imminent→late), `start − SECONDS_WINDOW_MS` (late→overdue, flash → steady;
+ *   `GRACE_MS === SECONDS_WINDOW_MS`, so this reuses the −window term), `±HOUR_MS`.
  *   Each is scheduled *on* the boundary, never past it (no overshoot).
  * - **meeting boundary** — the soonest `DTEND` among the still-current instances
  *   up to this key's offset (any of them ending re-indexes the view), and the
@@ -242,7 +250,7 @@ function floorEdge(t: number, unit: number): number {
  * Pure and total — same inputs as {@link computeFace}, no side effects.
  */
 export function msToNextVisibleChange(input: FaceInput): number {
-  const { configured, status, list, offset, now, horizonMs, graceMs, heldKeys } = input;
+  const { configured, status, list, offset, now, horizonMs, heldKeys } = input;
   const nowMs = now.getTime();
 
   if (!configured || status === "cold-error" || status === "loading") return MAX_MS;
@@ -279,18 +287,19 @@ export function msToNextVisibleChange(input: FaceInput): number {
   // Countdown to (or overdue count-up past) the event start.
   const r = inst.start.getTime() - nowMs;
   candidates.push(msToNextCountdownGlyph(r));
-  // Signed thresholds where the band or escalation flips; `APPROACHING_MS` and
-  // `SECONDS_WINDOW_MS` coincide, so the ±window term covers both.
+  // Signed thresholds where the band or escalation flips. Two coincidences fold
+  // terms together: `APPROACHING_MS === SECONDS_WINDOW_MS` (pre-start), and
+  // `GRACE_MS === SECONDS_WINDOW_MS` (post-start late→overdue), so the ±window
+  // terms cover the escalation flips on both sides of `start`.
   pushBoundaries(candidates, r, [
     SECONDS_WINDOW_MS,
     IMMINENT_MS,
     0,
-    -graceMs,
     -SECONDS_WINDOW_MS,
     HOUR_MS,
     -HOUR_MS,
   ]);
-  const escalation = escalationFor(r, graceMs);
+  const escalation = escalationFor(r);
   if (escalation === "imminent" || escalation === "late") {
     candidates.push(
       nextBlinkEdge(nowMs, escalation === "imminent" ? IMMINENT_BLINK_HALF_MS : LATE_FLASH_HALF_MS),
