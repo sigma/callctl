@@ -61,9 +61,10 @@ export interface NextMeetingDeps {
   /**
    * Optional §10 join-detection reader — the plugin wires `MeetRemote.joinedKey`.
    * Returns the provider-namespaced code of the call you are *in* (e.g.
-   * `"gmeet:abc-def-ghi"`) or `null`. A windowed match dismisses the late state
-   * and advances the key. Defaults to always-`null` (extension absent → the
-   * §10 grace-timer fallback is the only dismissal path, exactly as specified).
+   * `"gmeet:abc-def-ghi"`) or `null`. A windowed match holds the meeting as the
+   * calm in-call face and ends the late flash. Defaults to always-`null`
+   * (extension absent → the fixed §10 grace window is the only thing that ends
+   * the flash, calming it to steady `overdue`).
    */
   joinedKey?: () => string | null;
 }
@@ -133,7 +134,7 @@ export class NextMeetingAction extends SingletonAction {
     this.#openWith = deps.openWith ?? (async () => Promise.reject(new Error("openWith not wired")));
     this.#log = deps.log ?? (() => {});
     // No dep ⇒ the extension is absent: join-proof never fires and only the
-    // §10 grace-timer fallback dismisses the late state.
+    // fixed §10 grace window ends the late flash (calming it to steady overdue).
     this.#joinedKey = deps.joinedKey ?? (() => null);
   }
 
@@ -357,9 +358,11 @@ export class NextMeetingAction extends SingletonAction {
     // No such feed (empty or dangling feedId) ⇒ unconfigured face (§8).
     const snapshot = settings.feedId === "" ? undefined : this.#service.snapshot(settings.feedId);
     // Grow the durable join memory from the live signal, then apply §10 dismissal
-    // before both the boundary tripwire and the face: a grace-elapsed (never
-    // joined) meeting drops out here so the key advances, while a held (joined
-    // this session) meeting stays until its DTEND and stops flashing late.
+    // before both the boundary tripwire and the face: a held (joined this session)
+    // meeting stays until its DTEND and shows the calm in-call face, and any
+    // non-held meeting skipped before it drops out so the key advances. A
+    // never-joined late meeting is *not* dropped — it keeps surfacing (its flash
+    // calming to steady overdue) until its own DTEND.
     this.#recordLiveJoins(snapshot?.list ?? [], now);
     const list = applyDismissal(snapshot?.list ?? [], this.#joinedOccurrences);
 
@@ -382,7 +385,6 @@ export class NextMeetingAction extends SingletonAction {
       offset: settings.offset,
       now,
       horizonMs: settings.horizonMinutes * 60 * 1000,
-      graceMs: settings.graceMinutes * 60 * 1000,
       heldKeys: this.#joinedOccurrences,
     };
     void action.setImage(svgToImageUri(renderFaceSvg(computeFace(faceInput))));

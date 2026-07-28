@@ -459,7 +459,7 @@ describe("NextMeetingAction — setImage encoding", () => {
   });
 
   it("holds the calm in-call face after leaving a joined meeting, never re-flashing (§10)", () => {
-    // Started 20m ago (past the 10m grace), still running: unjoined this would be
+    // Started 20m ago (well past the 5m grace window), still running: unjoined this would be
     // the red overdue state. Join, then leave — the live signal clears but the
     // durable hold keeps the teal in-call face.
     const joined = instance(-20 * 60_000, 40 * 60_000, { title: "Sync" });

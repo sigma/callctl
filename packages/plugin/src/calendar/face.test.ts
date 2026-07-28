@@ -34,7 +34,6 @@ const base = (over: Partial<FaceInput>): FaceInput => ({
   offset: 0,
   now: new Date(2026, 6, 27, 9, 0),
   horizonMs: 24 * 60 * 60 * 1000,
-  graceMs: 10 * 60 * 1000,
   heldKeys: new Set(),
   ...over,
 });
@@ -68,7 +67,7 @@ describe("computeFace (§8 baseline)", () => {
 
   it("flashes late (within grace) for a freshly-started, never-joined event", () => {
     const now = new Date(2026, 6, 27, 9, 0);
-    // 1m past start, grace 10m → still the flashing late state, counting up.
+    // 1m past start, within the 5m grace window → still the flashing late state, counting up.
     const face = computeFace(base({ now, list: [instance(new Date(2026, 6, 27, 8, 59), "Sync")] }));
     expect(face.kind).toBe("countdown");
     if (face.kind === "countdown") {
@@ -79,7 +78,7 @@ describe("computeFace (§8 baseline)", () => {
 
   it("calms to steady overdue (not dropped) once past grace, still counting up (§10)", () => {
     const now = new Date(2026, 6, 27, 9, 0);
-    // 15m past start with grace 10m → overdue: steady red, still surfaced, +15m.
+    // 15m past start, well past the 5m grace window → overdue: steady red, still surfaced, +15m.
     const late = instance(new Date(2026, 6, 27, 8, 45), "Sync", new Date(2026, 6, 27, 9, 30));
     const face = computeFace(base({ now, list: [late] }));
     expect(face.kind).toBe("countdown");
@@ -162,6 +161,13 @@ describe("computeFace escalation (§8)", () => {
 
   it("is late once the event has started (negative time-to-start)", () => {
     expect(escalationAt(-1_000)).toBe("late");
+  });
+
+  it("flashes late through the 5-min grace window, then calms to overdue (no setting)", () => {
+    // Grace is hard-wired to the 5-min seconds window: the flash lasts exactly as
+    // long as the `+MM:SS` countdown shows seconds, then stops.
+    expect(escalationAt(-(5 * 60_000 - 1_000))).toBe("late"); // 4m59s past → still flashing
+    expect(escalationAt(-(5 * 60_000 + 1_000))).toBe("overdue"); // 5m01s past → steady
   });
 
   it("imminent gently blinks off on the off half of the ~1.2s cycle", () => {
@@ -254,7 +260,7 @@ describe("msToNextVisibleChange (contract #2–#4)", () => {
   it("drives late repaints off the 450 ms flash edge", () => {
     const HALF = LATE_FLASH_HALF;
     for (const nowMs of [0, 200, 449, 450, 901]) {
-      // 5 s past start, 10m grace → late (flashing): the flash edge bounds the wait.
+      // 5 s past start, within the 5m grace window → late (flashing): the flash edge bounds the wait.
       const delta = msToNextVisibleChange(countdown(-5_000, nowMs));
       const blinkEdge = HALF - (nowMs % HALF === 0 ? 0 : nowMs % HALF);
       expect(delta).toBeLessThanOrEqual(blinkEdge);
@@ -262,7 +268,7 @@ describe("msToNextVisibleChange (contract #2–#4)", () => {
   });
 
   it("overdue is steady: governed by the backstop, never a sub-second blink", () => {
-    // 15 min past start, 10 min grace → overdue (steady red, +15m count-up). No
+    // 15 min past start, well past the 5m grace window → overdue (steady red, +15m count-up). No
     // flash, so no sub-HALF edge; the minute tick is capped to the backstop.
     const delta = msToNextVisibleChange(countdown(-15 * MIN, 0));
     expect(delta).toBe(MAX_MS);

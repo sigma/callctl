@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  DEFAULT_GRACE_MINUTES,
   DEFAULT_HORIZON_MINUTES,
   DEFAULT_OFFSET,
   DEFAULT_POLL_INTERVAL_MINUTES,
@@ -78,26 +77,26 @@ describe("parseKeySettings (§3)", () => {
     expect(parseKeySettings({})).toEqual({
       feedId: "",
       offset: DEFAULT_OFFSET,
-      graceMinutes: DEFAULT_GRACE_MINUTES,
       horizonMinutes: DEFAULT_HORIZON_MINUTES,
     });
   });
 
   it("reads values and truncates a fractional offset", () => {
-    expect(
-      parseKeySettings({ feedId: "work", offset: 2.9, graceMinutes: 5, horizonMinutes: 120 }),
-    ).toEqual({
+    expect(parseKeySettings({ feedId: "work", offset: 2.9, horizonMinutes: 120 })).toEqual({
       feedId: "work",
       offset: 2,
-      graceMinutes: 5,
       horizonMinutes: 120,
     });
   });
 
-  it("clamps a negative offset / grace back to the default", () => {
-    const s = parseKeySettings({ feedId: "w", offset: -1, graceMinutes: -1 });
+  it("clamps a negative offset back to the default", () => {
+    const s = parseKeySettings({ feedId: "w", offset: -1 });
     expect(s.offset).toBe(DEFAULT_OFFSET);
-    expect(s.graceMinutes).toBe(DEFAULT_GRACE_MINUTES);
+  });
+
+  it("ignores a stale graceMinutes blob from an older Property Inspector", () => {
+    // The setting was retired; any leftover value in the store is simply dropped.
+    expect(parseKeySettings({ feedId: "w", graceMinutes: 42 })).not.toHaveProperty("graceMinutes");
   });
 
   it("falls back to the default horizon for a non-positive or missing value", () => {
