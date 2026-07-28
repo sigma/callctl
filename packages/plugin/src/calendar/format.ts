@@ -29,34 +29,61 @@ export interface MeetingHint {
   time: string;
 }
 
-/** `MM:SS`, or `Hh MM` once past an hour. */
-function clock(totalSec: number): string {
-  if (totalSec >= 3600) {
-    const h = Math.floor(totalSec / 3600);
-    const m = Math.floor((totalSec % 3600) / 60);
-    return `${h}h ${pad2(m)}`;
-  }
+/**
+ * The half-width of the seconds window: `formatCountdown` shows `MM:SS` iff the
+ * time to (or past) its target is within this of zero — contract #1. Exported so
+ * the render clock reuses the *same* value for its seconds↔minute tier boundary,
+ * with no drift between what the key displays and how fast it repaints.
+ */
+export const SECONDS_WINDOW_MS = 5 * 60 * 1000;
+
+const HOUR_MS = 60 * 60 * 1000;
+
+/** `MM:SS` — sub-hour minutes and seconds. */
+function mmss(totalSec: number): string {
   const m = Math.floor(totalSec / 60);
   const s = totalSec % 60;
   return `${pad2(m)}:${pad2(s)}`;
 }
 
+/** `Hh MM` — hours and zero-padded minutes, for the ≥ 1 h band. */
+function hhmm(totalSec: number): string {
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  return `${h}h ${pad2(m)}`;
+}
+
 /**
- * Format the time-to-start as the key countdown (§8):
- * - `MM:SS` under an hour, `Hh MM` over an hour,
- * - `+MM:SS` (or `+Hh MM`) once overdue.
+ * Format a signed time-to-target as the key countdown (§8, contract #1). One
+ * rule keyed off `t = |msRemaining|`, applied to every caller (to-start
+ * countdown, overdue count-up, and the in-call count-down-to-end):
  *
- * Remaining time rounds **up** so the key reads `00:01` for the final second and
- * hits `00:00` exactly at start; elapsed time (overdue) rounds **down** so it
- * begins at `+00:00`.
+ * - `t ≤ 5 min` → `MM:SS` / `+MM:SS` — the only band that shows seconds.
+ * - `5 min < t < 1 h` → `42m` / `+42m` — bare floored minute count (`m` suffix,
+ *   unmistakably not seconds); floor so no minute is skipped and the band tops
+ *   out at `59m`, never a bogus `60m`.
+ * - `t ≥ 1 h` → `1h 30` / `+1h 30`.
  *
- * @param msRemaining  `instance.start - now` in ms (negative once started).
+ * In the seconds band, remaining rounds **up** so the key reads `00:01` through
+ * the final second and hits `00:00` exactly at target; elapsed rounds **down**
+ * so it begins at `+00:00`.
+ *
+ * @param msRemaining  `target - now` in ms (negative once the target is past).
  */
 export function formatCountdown(msRemaining: number): string {
-  if (msRemaining < 0) {
-    return `+${clock(Math.floor(-msRemaining / 1000))}`;
+  const sign = msRemaining < 0 ? "+" : "";
+  const t = Math.abs(msRemaining);
+  // Remaining counts down (ceil to the whole second still ahead); elapsed counts
+  // up (floor to the whole second already past).
+  const sec = sign ? Math.floor(t / 1000) : Math.ceil(t / 1000);
+
+  if (t <= SECONDS_WINDOW_MS) {
+    return `${sign}${mmss(sec)}`;
   }
-  return clock(Math.ceil(msRemaining / 1000));
+  if (t >= HOUR_MS) {
+    return `${sign}${hhmm(sec)}`;
+  }
+  return `${sign}${Math.floor(t / 60000)}m`;
 }
 
 /**
