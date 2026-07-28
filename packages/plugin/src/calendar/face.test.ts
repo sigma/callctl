@@ -54,7 +54,7 @@ describe("computeFace (§8 baseline)", () => {
     expect(face).toEqual({
       kind: "countdown",
       title: "Sync",
-      time: "20:00",
+      time: "20m",
       escalation: "normal",
       blinkOff: false,
     });
@@ -73,13 +73,13 @@ describe("computeFace (§8 baseline)", () => {
 
   it("calms to steady overdue (not dropped) once past grace, still counting up (§10)", () => {
     const now = new Date(2026, 6, 27, 9, 0);
-    // 15m past start with grace 10m → overdue: steady red, still surfaced, +15:00.
+    // 15m past start with grace 10m → overdue: steady red, still surfaced, +15m.
     const late = instance(new Date(2026, 6, 27, 8, 45), "Sync", new Date(2026, 6, 27, 9, 30));
     const face = computeFace(base({ now, list: [late] }));
     expect(face.kind).toBe("countdown");
     if (face.kind === "countdown") {
       expect(face.escalation).toBe("overdue");
-      expect(face.time).toBe("+15:00");
+      expect(face.time).toBe("+15m");
     }
   });
 
@@ -90,7 +90,7 @@ describe("computeFace (§8 baseline)", () => {
     const face = computeFace(
       base({ now, list: [started], heldKeys: new Set([joinIdentity(started) as string]) }),
     );
-    expect(face).toEqual({ kind: "active", title: "Sync", time: "29:00" });
+    expect(face).toEqual({ kind: "active", title: "Sync", time: "29m" });
   });
 
   it("does not treat an unheld event as in-call even if its code matches another (§10)", () => {
@@ -105,7 +105,7 @@ describe("computeFace (§8 baseline)", () => {
         heldKeys: new Set([joinIdentity(otherOccurrence) as string]),
       }),
     );
-    expect(face).toMatchObject({ kind: "countdown", time: "20:00" });
+    expect(face).toMatchObject({ kind: "countdown", time: "20m" });
   });
 
   it("shows Free + a date/time hint when the next event is beyond the horizon", () => {
@@ -120,7 +120,7 @@ describe("computeFace (§8 baseline)", () => {
     // 20 min out but on the *next* local date — the old same-day horizon showed
     // Free here; the duration horizon correctly counts down.
     const face = computeFace(base({ now, list: [instance(new Date(2026, 6, 28, 0, 10), "Late")] }));
-    expect(face).toMatchObject({ kind: "countdown", title: "Late", time: "20:00" });
+    expect(face).toMatchObject({ kind: "countdown", title: "Late", time: "20m" });
   });
 
   it("shows plain Free when there is no event at this offset", () => {
