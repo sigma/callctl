@@ -22,8 +22,10 @@ describe("renderFaceSvg (§8)", () => {
       { kind: "unconfigured" },
       { kind: "error" },
       { kind: "free", hint: null },
+      { kind: "active", title: "Sync", time: "29:00" },
       countdown({ time: "00:00" }),
       countdown({ escalation: "late", blinkOff: true, time: "+00:03" }),
+      countdown({ escalation: "overdue", time: "+15:00" }),
     ] satisfies KeyFace[]) {
       const s = svgOf(face);
       expect(s.startsWith("<svg")).toBe(true);
@@ -50,6 +52,15 @@ describe("renderFaceSvg (§8)", () => {
     expect(s).toContain("17:00");
     expect(s).toContain("Free");
     expect(svgOf({ kind: "free", hint: null })).toContain("Free");
+  });
+
+  it("renders the in-call (active) face on a distinct field with its countdown", () => {
+    const s = svgOf({ kind: "active", title: "Sync", time: "29:00" });
+    expect(s).toContain("29:00");
+    expect(s).toContain("Sync");
+    // A background field distinct from the normal countdown's dark slate.
+    expect(s).toContain('fill="#0b2b30"');
+    expect(s).not.toContain('fill="#1c2128"');
   });
 
   it("gives Free, setup and error visibly distinct colours (§8)", () => {
@@ -88,5 +99,16 @@ describe("renderFaceSvg (§8)", () => {
     expect(off).toMatch(/<rect[^>]*fill="#ff5c50"/);
     // The overdue time is still legible either way.
     expect(off).toContain("+00:05");
+  });
+
+  it("renders overdue as steady red on the dark field — no flash, no blink (§10)", () => {
+    const timeFill = (s: string) => s.match(/font-size="40"[^>]*fill="(#[0-9a-f]{6})"/)?.[1];
+    // blinkOff is never set for overdue (isBlinkOff returns false), but even so
+    // the render keeps the dark field — the hard-flash is exclusive to `late`.
+    const s = svgOf(countdown({ escalation: "overdue", blinkOff: true, time: "+15:00" }));
+    expect(s).toMatch(/<rect[^>]*fill="#1c2128"/); // dark field, not the red flood
+    expect(timeFill(s)).toBe("#ff5c50"); // red glyph
+    expect(s).not.toContain("opacity="); // no dim/blink
+    expect(s).toContain("+15:00");
   });
 });

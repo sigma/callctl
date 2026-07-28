@@ -5,6 +5,8 @@ import {
   applyDismissal,
   currentInstance,
   displayHorizon,
+  isJoined,
+  joinIdentity,
   parseFeed,
   selectMeetings,
 } from "./engine.js";
@@ -248,7 +250,7 @@ describe("currentInstance — boundary advance (§9)", () => {
   });
 });
 
-describe("applyDismissal — late-state dismissal (§10)", () => {
+describe("applyDismissal — §10 hold & skip-ahead", () => {
   const base = new Date(2026, 5, 15, 12, 0, 0);
   /** A tier-(a) gmeet instance spanning `[startMin, endMin]` with a given code. */
   const meet = (startMin: number, endMin: number, code: string, title = "x"): MeetingInstance => ({
@@ -259,7 +261,7 @@ describe("applyDismissal — late-state dismissal (§10)", () => {
     sourceFeedId: "f",
     candidate: { tier: "a", provider: "gmeet", code, joinUrl: "https://meet.google.com/x" },
   });
-  /** A tier-(b) instance (no code — can only be grace-dismissed). */
+  /** A tier-(b) instance (no code — never joinable). */
   const tierB = (startMin: number, endMin: number, title = "x"): MeetingInstance => ({
     start: new Date(base.getTime() + startMin * 60_000),
     end: new Date(base.getTime() + endMin * 60_000),
@@ -268,57 +270,80 @@ describe("applyDismissal — late-state dismissal (§10)", () => {
     sourceFeedId: "f",
     candidate: { tier: "b" },
   });
+  /** The held set for a set of instances (their {@link joinIdentity}s). */
+  const held = (...insts: MeetingInstance[]) =>
+    new Set(insts.map((i) => joinIdentity(i)).filter((id): id is string => id !== null));
 
-  it("keeps a still-upcoming or freshly-late event with no join proof", () => {
+  it("keeps every instance when nothing is held (dismissal never drops a late one)", () => {
     const soon = meet(5, 35, "gmeet:aaa-bbbb-ccc", "Soon"); // starts in 5m
-    const late = meet(-3, 27, "gmeet:ddd-eeee-fff", "Late"); // 3m past start, within grace
-    const kept = applyDismissal([late, soon], base, 10, null);
+    const late = meet(-3, 27, "gmeet:ddd-eeee-fff", "Late"); // 3m past start
+    const kept = applyDismissal([late, soon], new Set());
     expect(kept.map((i) => i.title)).toEqual(["Late", "Soon"]);
   });
 
-  it("grace fallback dismisses once start + graceMinutes has passed", () => {
-    const overGrace = meet(-11, 19, "gmeet:aaa-bbbb-ccc", "OverGrace"); // 11m past start, grace 10
-    const next = meet(20, 50, "gmeet:ddd-eeee-fff", "Next");
-    const kept = applyDismissal([overGrace, next], base, 10, null);
-    expect(kept.map((i) => i.title)).toEqual(["Next"]);
+  it("keeps a long-overdue never-joined meeting surfaced until its DTEND (no early drop)", () => {
+    // 60m past start, still running — grace no longer dismisses; it stays current
+    // (rendered static-red overdue, an §8 concern) until end > now goes false.
+    const overdue = meet(-60, 30, "gmeet:aaa-bbbb-ccc", "Overdue");
+    expect(applyDismissal([overdue], new Set()).map((i) => i.title)).toEqual(["Overdue"]);
   });
 
-  it("grace boundary is exclusive-of-now at exactly start + grace", () => {
-    const atGrace = meet(-10, 20, "gmeet:aaa-bbbb-ccc", "AtGrace"); // start + 10m === now
-    expect(applyDismissal([atGrace], base, 10, null)).toEqual([]);
-  });
-
-  it("join proof dismisses the matched event and advances to the next", () => {
-    const joined = meet(-2, 28, "gmeet:aaa-bbbb-ccc", "Joined");
+  it("holds a joined meeting until its end, even well past grace — and durably (§10)", () => {
+    // 15m past start; only the held set (no live key) keeps it, so it survives
+    // leaving the call. Its neighbour is untouched.
+    const joined = meet(-15, 28, "gmeet:aaa-bbbb-ccc", "Joined");
     const next = meet(30, 60, "gmeet:ddd-eeee-fff", "Next");
-    const kept = applyDismissal([joined, next], base, 10, "gmeet:aaa-bbbb-ccc");
-    expect(kept.map((i) => i.title)).toEqual(["Next"]);
+    const kept = applyDismissal([joined, next], held(joined));
+    expect(kept.map((i) => i.title)).toEqual(["Joined", "Next"]);
   });
 
-  it("windowed match skips past everything up to and including a later join (skip-ahead to N+1)", () => {
+  it("skip-ahead: a held later event drops the non-held skipped one before it", () => {
     const skipped = meet(-5, 25, "gmeet:aaa-bbbb-ccc", "Skipped"); // never joined
     const joined = meet(-1, 29, "gmeet:ddd-eeee-fff", "Joined"); // joined N+1 directly
     const after = meet(40, 70, "gmeet:ggg-hhhh-iii", "After");
-    const kept = applyDismissal([skipped, joined, after], base, 30, "gmeet:ddd-eeee-fff");
-    // Both the skipped and the joined event drop out; the key advances to "After".
-    expect(kept.map((i) => i.title)).toEqual(["After"]);
+    const kept = applyDismissal([skipped, joined, after], held(joined));
+    // Only the skipped event before the held one drops; the held event stays.
+    expect(kept.map((i) => i.title)).toEqual(["Joined", "After"]);
   });
 
-  it("matches the join key case-insensitively", () => {
-    const joined = meet(-1, 29, "gmeet:aaa-bbbb-ccc", "Joined");
-    expect(applyDismissal([joined], base, 30, "GMEET:AAA-BBBB-CCC")).toEqual([]);
+  it("holds only the exact occurrence, not a future one sharing the same code", () => {
+    // A recurring meeting shares one code across occurrences; joinIdentity pins
+    // the held set to a single occurrence by its start, so the future one is not
+    // affected (and, being after the held one, is kept anyway).
+    const nowInst = meet(-15, 28, "gmeet:aaa-bbbb-ccc", "Now");
+    const future = meet(120, 150, "gmeet:aaa-bbbb-ccc", "Future"); // same code, later start
+    const kept = applyDismissal([nowInst, future], held(nowInst));
+    expect(kept.map((i) => i.title)).toEqual(["Now", "Future"]);
   });
 
-  it("a tier-(b) event never matches a join key (only grace can dismiss it)", () => {
+  it("a tier-(b) event is never held (no code) but is still kept until its end", () => {
     const b = tierB(-1, 29, "TierB");
-    // Not join-dismissed (no code) and within grace ⇒ still surfaced.
-    expect(applyDismissal([b], base, 30, "gmeet:aaa-bbbb-ccc").map((i) => i.title)).toEqual([
-      "TierB",
-    ]);
+    expect(applyDismissal([b], new Set()).map((i) => i.title)).toEqual(["TierB"]);
+  });
+});
+
+describe("isJoined — live in-call signal (§10)", () => {
+  const base = new Date(2026, 5, 15, 12, 0, 0);
+  const meet = (startMin: number, code: string): MeetingInstance => ({
+    start: new Date(base.getTime() + startMin * 60_000),
+    end: new Date(base.getTime() + (startMin + 30) * 60_000),
+    allDay: false,
+    title: "x",
+    sourceFeedId: "f",
+    candidate: { tier: "a", provider: "gmeet", code, joinUrl: "https://meet.google.com/x" },
   });
 
-  it("null join key leaves the grace path as the only dismissal (extension absent)", () => {
-    const late = meet(-3, 27, "gmeet:aaa-bbbb-ccc", "Late");
-    expect(applyDismissal([late], base, 10, null).map((i) => i.title)).toEqual(["Late"]);
+  it("matches a started occurrence whose code equals the key (case-insensitive)", () => {
+    expect(isJoined(meet(-2, "gmeet:aaa-bbbb-ccc"), "GMEET:AAA-BBBB-CCC", base)).toBe(true);
+  });
+
+  it("does not match a not-yet-started occurrence sharing the code (recurring safety)", () => {
+    // Guards the durable memory from marking a future occurrence when you join
+    // today's — the started gate is what keeps joinIdentity per-occurrence sound.
+    expect(isJoined(meet(120, "gmeet:aaa-bbbb-ccc"), "gmeet:aaa-bbbb-ccc", base)).toBe(false);
+  });
+
+  it("never matches with no live key, nor a tier-(b) event", () => {
+    expect(isJoined(meet(-2, "gmeet:aaa-bbbb-ccc"), null, base)).toBe(false);
   });
 });

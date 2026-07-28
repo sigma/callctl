@@ -11,7 +11,7 @@
  * clock's blink/flash phase, both derived purely from `now` vs. the event start.
  */
 
-import { displayHorizon } from "./engine.js";
+import { displayHorizon, joinIdentity } from "./engine.js";
 import type { MeetingHint } from "./format.js";
 import { formatCountdown, formatMeetingHint } from "./format.js";
 import type { FeedStatus, MeetingInstance } from "./types.js";
@@ -21,9 +21,12 @@ import type { FeedStatus, MeetingInstance } from "./types.js";
  * - `normal` — `> 5 min`, steady slate.
  * - `approaching` — `≤ 5 min`, steady orange.
  * - `imminent` — `≤ 30 s` (still before start), red with a gentle blink.
- * - `late` — past start (`< 0`), flashing red counting **up** `+MM:SS`.
+ * - `late` — past start but within `graceMinutes`, flashing red counting **up** `+MM:SS`.
+ * - `overdue` — past `start + graceMinutes` and still never joined: the flash
+ *   calms to a **steady** red (no blink), still counting **up** `+MM:SS`. The
+ *   meeting is *not* dropped — it stays until its `DTEND` (§9).
  */
-export type Escalation = "normal" | "approaching" | "imminent" | "late";
+export type Escalation = "normal" | "approaching" | "imminent" | "late" | "overdue";
 
 /** `≤ 5 min` to start → approaching (§8). */
 const APPROACHING_MS = 5 * 60 * 1000;
@@ -34,8 +37,13 @@ const IMMINENT_BLINK_HALF_MS = 600;
 /** Late's hard flash: ~0.9 s period → 450 ms half-cycle (§8). */
 const LATE_FLASH_HALF_MS = 450;
 
-/** Classify the §8 escalation from the signed ms-to-start (`start − now`). */
-function escalationFor(msToStart: number): Escalation {
+/**
+ * Classify the §8 escalation from the signed ms-to-start (`start − now`), with
+ * the flash calming to steady `overdue` once past `graceMs` (the §10 grace no
+ * longer *dismisses*, it only ends the flashing).
+ */
+function escalationFor(msToStart: number, graceMs: number): Escalation {
+  if (msToStart < -graceMs) return "overdue";
   if (msToStart < 0) return "late";
   if (msToStart <= IMMINENT_MS) return "imminent";
   if (msToStart <= APPROACHING_MS) return "approaching";
@@ -70,6 +78,13 @@ export type KeyFace =
   /** Between meetings; `hint` is the next-meeting signpost (date + time) or `null`. */
   | { kind: "free"; hint: MeetingHint | null }
   /**
+   * You are **in this call** (§10 join-proof): the meeting stays surfaced until
+   * its end instead of flashing late or advancing. `time` counts **down to the
+   * meeting's end**; the renderer gives it a distinct field so it never reads as
+   * the alarming late flash.
+   */
+  | { kind: "active"; title: string; time: string }
+  /**
    * A live countdown to (or overdue count-up past) the key's event. `escalation`
    * picks the §8 colour/behaviour; `blinkOff` is `true` on the off half of the
    * blink (imminent) / flash (late) cycle for the current render tick.
@@ -90,6 +105,10 @@ export interface FaceInput {
   now: Date;
   /** The key's countdown horizon in ms (§3/§5; default 24h). */
   horizonMs: number;
+  /** The key's late-state grace in ms (§3/§10): flash → steady `overdue` cutoff. */
+  graceMs: number;
+  /** {@link joinIdentity} strings of meetings joined this session (§10) — held in-call. */
+  heldKeys: ReadonlySet<string>;
 }
 
 /**
@@ -99,7 +118,7 @@ export interface FaceInput {
  * horizon (§5, "within `horizonMs` of start") decides countdown vs. Free.
  */
 export function computeFace(input: FaceInput): KeyFace {
-  const { configured, status, list, offset, now, horizonMs } = input;
+  const { configured, status, list, offset, now, horizonMs, graceMs, heldKeys } = input;
 
   if (!configured) return { kind: "unconfigured" };
   if (status === "cold-error") return { kind: "error" };
@@ -108,8 +127,19 @@ export function computeFace(input: FaceInput): KeyFace {
   const horizon = displayHorizon(list, offset, now, horizonMs);
   switch (horizon.kind) {
     case "within": {
+      // Joined this session (§10): hold it as a calm in-progress countdown to its
+      // end, never the late flash — you already dealt with it. Durable across
+      // leaving the call (`heldKeys` remembers the occurrence).
+      const id = joinIdentity(horizon.instance);
+      if (id !== null && heldKeys.has(id)) {
+        return {
+          kind: "active",
+          title: horizon.instance.title,
+          time: formatCountdown(horizon.instance.end.getTime() - now.getTime()),
+        };
+      }
       const msToStart = horizon.instance.start.getTime() - now.getTime();
-      const escalation = escalationFor(msToStart);
+      const escalation = escalationFor(msToStart, graceMs);
       return {
         kind: "countdown",
         title: horizon.instance.title,

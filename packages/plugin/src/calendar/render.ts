@@ -27,6 +27,9 @@ const COLOR = {
   approaching: "#f0883e",
   imminent: "#f85149",
   late: "#ff5c50",
+  /** In-call (§10 joined): a calm teal field, distinct from every alarm hue. */
+  active: "#39c5cf",
+  activeBg: "#0b2b30",
 } as const;
 
 /** The countdown text colour for each §8 escalation state. */
@@ -35,6 +38,8 @@ const ESCALATION_COLOR: Record<Escalation, string> = {
   approaching: COLOR.approaching,
   imminent: COLOR.imminent,
   late: COLOR.late,
+  // Past grace, never joined: steady red — same hue as the flash, no blink.
+  overdue: COLOR.late,
 };
 
 /** Dimmed opacity for imminent's gentle blink off-phase (§8). */
@@ -92,6 +97,13 @@ export function renderFaceSvg(face: KeyFace): string {
       const opacity = face.escalation === "imminent" && face.blinkOff ? BLINK_DIM : 1;
       return svg(`${titleStrip(face.title)}${text(face.time, 90, 40, fg, "bold", opacity)}`);
     }
+    case "active":
+      // In-call (§10): same big-countdown layout as a live countdown, but a calm
+      // teal field + steady glyph — you are here, so no blink, no alarm colour.
+      return svg(
+        `${titleStrip(face.title)}${text(face.time, 90, 40, COLOR.active, "bold")}`,
+        COLOR.activeBg,
+      );
     case "free":
       // No next meeting → a single centred "Free". Otherwise stack the signpost:
       // "Free" over "til <date>" over "<time>", the date/time lines in the title

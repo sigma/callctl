@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { joinIdentity } from "./engine.js";
 import { computeFace, type Escalation, type FaceInput } from "./face.js";
 import type { MeetingInstance } from "./types.js";
 
@@ -27,6 +28,8 @@ const base = (over: Partial<FaceInput>): FaceInput => ({
   offset: 0,
   now: new Date(2026, 6, 27, 9, 0),
   horizonMs: 24 * 60 * 60 * 1000,
+  graceMs: 10 * 60 * 1000,
+  heldKeys: new Set(),
   ...over,
 });
 
@@ -57,14 +60,52 @@ describe("computeFace (§8 baseline)", () => {
     });
   });
 
-  it("marks an already-started event late with a +MM:SS count-up", () => {
+  it("flashes late (within grace) for a freshly-started, never-joined event", () => {
     const now = new Date(2026, 6, 27, 9, 0);
+    // 1m past start, grace 10m → still the flashing late state, counting up.
     const face = computeFace(base({ now, list: [instance(new Date(2026, 6, 27, 8, 59), "Sync")] }));
     expect(face.kind).toBe("countdown");
     if (face.kind === "countdown") {
       expect(face.escalation).toBe("late");
       expect(face.time).toBe("+01:00");
     }
+  });
+
+  it("calms to steady overdue (not dropped) once past grace, still counting up (§10)", () => {
+    const now = new Date(2026, 6, 27, 9, 0);
+    // 15m past start with grace 10m → overdue: steady red, still surfaced, +15:00.
+    const late = instance(new Date(2026, 6, 27, 8, 45), "Sync", new Date(2026, 6, 27, 9, 30));
+    const face = computeFace(base({ now, list: [late] }));
+    expect(face.kind).toBe("countdown");
+    if (face.kind === "countdown") {
+      expect(face.escalation).toBe("overdue");
+      expect(face.time).toBe("+15:00");
+    }
+  });
+
+  it("shows an in-progress countdown to the end (not the late flash) once held (§10)", () => {
+    const now = new Date(2026, 6, 27, 9, 0);
+    // Started 1m ago, ends in 29m; its occurrence is in the held set.
+    const started = instance(new Date(2026, 6, 27, 8, 59), "Sync", new Date(2026, 6, 27, 9, 29));
+    const face = computeFace(
+      base({ now, list: [started], heldKeys: new Set([joinIdentity(started) as string]) }),
+    );
+    expect(face).toEqual({ kind: "active", title: "Sync", time: "29:00" });
+  });
+
+  it("does not treat an unheld event as in-call even if its code matches another (§10)", () => {
+    const now = new Date(2026, 6, 27, 9, 0);
+    // Held set carries a *different* occurrence (other start) of the same code.
+    const surfaced = instance(new Date(2026, 6, 27, 9, 20), "Sync");
+    const otherOccurrence = instance(new Date(2026, 6, 27, 8, 0), "Sync");
+    const face = computeFace(
+      base({
+        now,
+        list: [surfaced],
+        heldKeys: new Set([joinIdentity(otherOccurrence) as string]),
+      }),
+    );
+    expect(face).toMatchObject({ kind: "countdown", time: "20:00" });
   });
 
   it("shows Free + a date/time hint when the next event is beyond the horizon", () => {

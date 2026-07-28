@@ -92,7 +92,7 @@ interface NamedFeed {
 interface NextMeetingSettings {
   feedId: string;                // which global feed this key tracks (no cross-feed merge)
   offset: number;                // index into the ordered event list; default 0  (#41)
-  graceMinutes: number;          // late-state dismissal grace; default 10  (#48)
+  graceMinutes: number;          // late-flash duration (flash → steady overdue); default 10  (#48)
   horizonMinutes: number;        // countdown horizon (within N min of start); default 1440 (24h)
 }
 ```
@@ -163,7 +163,7 @@ The key at `offset N` renders the Nth element of this list (0-indexed). Fewer th
 ### Display horizon = a configurable duration (default 24h)
 
 - The countdown counts to the next in-scope event **starting less than `horizonMinutes` from now** — a per-key setting (§3), default **24h**.
-- If the next in-scope event starts **beyond** that horizon → green **"Free" + hint** of the next meeting (e.g. `Free · Mon 9:00`).
+- If the next in-scope event starts **beyond** that horizon → green **"Free" + signpost** of the next meeting: `Free` over `til <date>` over `<time>` (e.g. `til Aug 11` / `17:00`), an explicit date so a meeting weeks out is unambiguous.
 - If there are no in-scope events at all → plain **"Free" / "No meetings"** (empty hint).
 - The horizon is a **duration, not a calendar day**: it is re-derived from `now` every render tick and does not care which local date the event falls on. This deliberately replaces the earlier *today-only (same-local-day)* horizon, which misclassified meetings straddling local midnight (a 00:15 meeting looked "Free" at 23:50 because it was a different date). An already-started, not-yet-dismissed event has a negative time-to-start and is always within horizon (late count-up).
 
@@ -265,12 +265,15 @@ When the surfaced event's `sourceFeed` has an `open: { browser, profile }` (§3)
 - `profile` is the literal `--profile-directory` **folder name** (`Default`, `Profile 1`, …) — *not* a display name. Docs/PI point the user at `chrome://version` → "Profile Path" → last path segment.
 - **Degradation:** absent `open` ⇒ tier 1. Configured-but-spawn-fails (bad binary, wrong macOS app name, non-zero exit, OS not in table) ⇒ fall back to `openUrl(joinUrl)` **and** `showAlert()` + log. (Fire-and-forget means only spawn-level failure is detectable, not "wrong profile.")
 
-### No-link / non-event press
+### Press target follows the face
 
-Selection (§5) guarantees a *surfaced* event always has an openable target (tier (a) join URL or tier (b) calendar fallback). Only non-event states have nothing to open:
+The press opens what the key shows, so it never opens a call you are not near:
 
-- **Between-meetings (Free):** press = **no-op**; optionally `showOk()` and/or trigger an on-demand re-poll.
-- **No-feed / setup:** press = **no-op**; optionally `showAlert()` / nudge toward the Property Inspector.
+- **Counting down / in-call** (an event within the horizon, or the joined meeting): open the surfaced event's target — tier (a) join URL, or tier (b) calendar fallback.
+- **"Free" with a next meeting beyond the horizon:** open the **calendar home** (the §6.4 feed-derived origin), *not* the far-off meeting's join link. Opening a call hours or days away makes no sense; the calendar is the useful destination.
+- **Idle "Free"** (no surfaced event at all): press = **no-op**; `showOk()` and/or trigger an on-demand re-poll.
+- **No-feed / setup:** press = **no-op**; `showAlert()` / nudge toward the Property Inspector.
+- **No derivable calendar** (unparseable feed origin) where a fallback was needed: `showAlert()`, open nothing.
 
 Never error, never open a stale or previous URL.
 
@@ -289,16 +292,21 @@ Escalation states:
 | normal | `> 5 min` | slate | steady |
 | approaching | `≤ 5 min` | orange | steady |
 | imminent | `≤ 30 s` | red | **gentle blink** (~1.2 s period) |
-| late | past start (`< 0`) | flashing red | **hard flash** (~0.9 s period), counts **up** `+MM:SS` |
-| joined | extension reports in-call for this event | — | **dismiss late, advance** to next event (§10) |
+| late | past start (`< 0`), within grace, not joined | flashing red | **hard flash** (~0.9 s period), counts **up** `+MM:SS` |
+| overdue | past `start + graceMinutes`, still never joined | steady red | **no flash** — the alarm calms to a steady glyph, still counting **up** `+MM:SS` |
+| in-call | joined this session (started event) | teal, steady | **hold current until end** — counts **down** to `DTEND` on a distinct field (§10) |
 
 Non-countdown states:
 
-- **Between meetings:** green **"Free"** (+ next-meeting hint when the next in-scope event is a future day, e.g. `Free · Mon 9:00`).
+- **Between meetings:** green **"Free"** (+ next-meeting signpost when the next in-scope event is beyond the horizon — `Free` over `til <date>` over `<time>`, e.g. `til Aug 11` / `17:00`).
 - **No feed / unconfigured** (empty or dangling `feedId`): **setup prompt** (nudge to the Property Inspector).
 - **Cold-start error** (§9): a **dedicated error/attention state** — warning glyph / muted red (e.g. `No data` / `!`) — that is **visually distinct** from both green "Free" and the setup prompt.
 
-The **late state is not open-ended** — it ends on join-proof or the grace timer (§10), then hands rendering back to the boundary logic (§9), which advances the selection.
+**No late state advances the key early.** A surfaced meeting stays current until its `DTEND` (§9) regardless of lateness — nothing is dropped for being late. The two timers only change *how it looks*, never *whether it shows*:
+- **Grace timer** (`start + graceMinutes`): ends the **flash**. Before it, `late` (flashing red); after it, `overdue` (steady red). The meeting keeps showing either way.
+- **Join-proof** (§10): swaps the red state for the calm **in-call** teal countdown and holds it — **durably**, even after you leave the call — until `DTEND`.
+
+At `DTEND` the boundary logic (§9) advances the selection, the one and only advance.
 
 ---
 
@@ -320,9 +328,9 @@ A fixed 500 ms local timer does pure arithmetic (`now` vs the cached event set):
 
 ### Meeting-boundary behavior
 
-- The current event stays current until its scheduled `end` (§5 sort governs ordering; `end > now` governs currency).
-- Past `start` → late flash `+MM:SS` (§8); at `end` → advance to the next list element. Count-up is bounded by the meeting duration (and by grace / DTEND, §10).
-- **Join advances early:** a §10 in-call signal before `end` advances immediately.
+- The current event stays current until its scheduled `end` (§5 sort governs ordering; `end > now` governs currency) — **the only advance**. Nothing is dropped for being late.
+- Past `start` → late flash `+MM:SS`, calming to steady `overdue` at `start + graceMinutes` (§8, §10); at `end` → advance to the next list element.
+- **Join holds, it does not advance:** a §10 in-call signal swaps the red state for the in-call countdown to `DTEND`, keeping the meeting current and durably held (survives leaving) until `DTEND` — the same boundary as every other meeting.
 
 ### Freshness / fetch-failure
 
@@ -334,7 +342,7 @@ A fixed 500 ms local timer does pure arithmetic (`now` vs the cached event set):
 
 ## 10. Extension join-detection (optional input)
 
-The extension is **optional** — everything above works with Chrome closed. When present, it lets the plugin dismiss the late state the instant you actually join, rather than waiting for the grace timer. Still **no auto-join, no DOM driving** — this is read-only detection.
+The extension is **optional** — everything above works with Chrome closed. When present, it lets the plugin end the late flash the instant you actually join and hold the meeting as an **in-call** state until it ends, rather than waiting on the grace timer. Still **no auto-join, no DOM driving** — this is read-only detection.
 
 ### The wire signal — new `callState` StateEvent
 
@@ -356,21 +364,23 @@ The Leave button renders only once admitted and in the call — this avoids fals
 ### Plugin side
 
 - `MeetRemote` caches `joinedKey: string | null` from the `callState` input (add an input handler + reader).
-- `NextMeetingAction` compares `joinedKey` (case-insensitive) against the surfaced event's normalized `<provider>:<code>` (the tier-(a) `code` from §6). A match ⇒ dismiss the late state + advance.
-- **Windowed match:** compare the incoming code against **all tracked near-term events**, not just the currently-surfaced one. If you skip event N and join N+1 directly, a hit advances past everything up to and including the matched event.
+- `NextMeetingAction` samples the *live* `joinedKey` (case-insensitive) against each started tier-(a) occurrence and **remembers** the ones it matches in a session-durable set of occurrence identities (`<provider>:<code>@<start>`). A remembered occurrence is **held**: the **in-call** state (end the flash, hold current, count down to `DTEND`). Because it is remembered, the hold **survives leaving the call** — the live signal clears but the identity stays, so the late flash never resumes for a meeting you already joined.
+- **Started-occurrence match:** a recurring meeting shares one code across occurrences, so the live match is restricted to an occurrence that has already started (`start ≤ now`) — the one you are actually in. Pairing the code with the occurrence start in the identity keeps a join from ever holding a *future* occurrence of the same series.
+- **Skip-ahead:** the held set is checked against **all tracked near-term events**. If you skip event N and join N+1 directly, the non-held events *before* the held one are dropped so the key advances to the event you are in — which then holds until its own end.
 
 ### The fallback — always active, primary path
 
-Because the extension is optional, a **time-based fallback is primary and always on**:
+Because the extension is optional, a **time-based fallback is primary and always on** — but it governs only the **flash**, not whether the meeting shows:
 
-- **Dismiss the late state at `min(join-proof, start + graceMinutes, DTEND)`.**
 - **`graceMinutes` default = 10**, exposed as a per-key Property Inspector setting (§3, §11).
-- **Capped at `DTEND`** — never flash-late past a meeting that already ended (e.g. a 5-minute standup).
+- Before `start + graceMinutes` a never-joined late meeting **flashes** (`late`); after it, the flash **calms to steady** (`overdue`). Either way the meeting stays surfaced until its `DTEND` (§9) — the grace timer no longer dismisses or advances anything.
+
+Being joined overrides the red states entirely: the meeting is held as the calm in-call countdown until its `DTEND`.
 
 ### Interactions
 
-- A **press does not count as join-proof** (opening ≠ joining) — only real join-proof or the grace timer dismisses.
-- §10 owns *when* the late state ends; §9 owns *what the key shows afterward* (dismissal advances the selection, then hands rendering back to the boundary logic).
+- A **press does not count as join-proof** (opening ≠ joining) — only a real in-call signal marks a meeting held.
+- §10 owns the flash/steady/in-call *appearance* and the durable held set; §9 owns the single boundary that advances the selection once `DTEND` passes.
 
 ---
 

@@ -7,7 +7,13 @@ import {
   type WillDisappearEvent,
 } from "@elgato/streamdeck";
 
-import { applyDismissal, currentInstance, displayHorizon } from "../calendar/engine.js";
+import {
+  applyDismissal,
+  currentInstance,
+  displayHorizon,
+  isJoined,
+  joinIdentity,
+} from "../calendar/engine.js";
 import { computeFace } from "../calendar/face.js";
 import { renderFaceSvg } from "../calendar/render.js";
 import type { CalendarService } from "../calendar/service.js";
@@ -98,6 +104,15 @@ export class NextMeetingAction extends SingletonAction {
    * {@link currentInstance}) and we force one confirming poll.
    */
   readonly #currentEnd = new Map<string, number>();
+  /**
+   * §10 durable join memory: the {@link joinIdentity} of every occurrence the
+   * extension has reported us in-call for this session. Grown from the *live*
+   * `joinedKey` on every render/press, it outlives leaving the call — so a
+   * meeting you joined and then left stays held (calm, never re-flashing late)
+   * until its `DTEND`, rather than resuming the late flash the instant the live
+   * signal clears.
+   */
+  readonly #joinedOccurrences = new Set<string>();
   #renderTimer: ReturnType<typeof setInterval> | undefined;
   #pollTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -181,8 +196,9 @@ export class NextMeetingAction extends SingletonAction {
     // Classify the *surfaced* (post-§10-dismissal) event exactly as the face does,
     // so the press target matches what the key shows. A press is not join-proof,
     // so it never itself dismisses.
+    this.#recordLiveJoins(snapshot.list, now);
     const horizon = displayHorizon(
-      applyDismissal(snapshot.list, now, settings.graceMinutes, this.#joinedKey()),
+      applyDismissal(snapshot.list, this.#joinedOccurrences),
       settings.offset,
       now,
       settings.horizonMinutes * 60 * 1000,
@@ -323,15 +339,12 @@ export class NextMeetingAction extends SingletonAction {
 
     // No such feed (empty or dangling feedId) ⇒ unconfigured face (§8).
     const snapshot = settings.feedId === "" ? undefined : this.#service.snapshot(settings.feedId);
-    // Apply §10 late-state dismissal before both the boundary tripwire and the
-    // face: a joined (or grace-elapsed) meeting drops out of the view here, so
-    // the key advances to the next event and stops flashing late.
-    const list = applyDismissal(
-      snapshot?.list ?? [],
-      now,
-      settings.graceMinutes,
-      this.#joinedKey(),
-    );
+    // Grow the durable join memory from the live signal, then apply §10 dismissal
+    // before both the boundary tripwire and the face: a grace-elapsed (never
+    // joined) meeting drops out here so the key advances, while a held (joined
+    // this session) meeting stays until its DTEND and stops flashing late.
+    this.#recordLiveJoins(snapshot?.list ?? [], now);
+    const list = applyDismissal(snapshot?.list ?? [], this.#joinedOccurrences);
 
     // Meeting-boundary crossing (§9): if the instance we last rendered has now
     // ended, the key advances (currentInstance skips it below) — force one poll
@@ -352,7 +365,27 @@ export class NextMeetingAction extends SingletonAction {
       offset: settings.offset,
       now,
       horizonMs: settings.horizonMinutes * 60 * 1000,
+      graceMs: settings.graceMinutes * 60 * 1000,
+      heldKeys: this.#joinedOccurrences,
     });
     void action.setImage(svgToImageUri(renderFaceSvg(face)));
+  }
+
+  /**
+   * Fold the *live* `joinedKey` into the durable §10 join memory: mark every
+   * started occurrence in `list` the extension currently reports us in-call for
+   * (see {@link isJoined}) as held ({@link joinIdentity}). Idempotent and
+   * additive — the identity persists after the live signal clears on leave, so
+   * the meeting never re-flashes late.
+   */
+  #recordLiveJoins(list: MeetingInstance[], now: Date): void {
+    const key = this.#joinedKey();
+    if (key === null) return;
+    for (const inst of list) {
+      if (isJoined(inst, key, now)) {
+        const id = joinIdentity(inst);
+        if (id !== null) this.#joinedOccurrences.add(id);
+      }
+    }
   }
 }

@@ -107,58 +107,87 @@ export function selectMeetings(
 }
 
 /**
- * Apply §10 late-state **dismissal** to the ordered list, returning only the
- * instances a key should still surface. This is the pre-filter the render clock
- * and press handler run before {@link currentInstance} / {@link displayHorizon},
- * so a dismissed late meeting drops out of the view and every key advances to
- * the next event.
+ * The durable identity of a joinable **occurrence** (§10): its canonical
+ * `<provider>:<code>` paired with this occurrence's start instant, or `null` for
+ * a tier-(b) event (no code — never joinable). The start pins it to *one*
+ * occurrence: a recurring meeting shares a single Meet code across every
+ * occurrence, so the code alone would conflate them. The plugin remembers these
+ * identities for meetings you have joined this session (see `heldKeys` below).
+ */
+export function joinIdentity(inst: MeetingInstance): string | null {
+  const c = inst.candidate;
+  if (c.tier !== "a" || c.code === undefined) return null;
+  return `${c.code.toLowerCase()}@${inst.start.getTime()}`;
+}
+
+/**
+ * Whether `inst` is the call you are **currently in** (§10): a tier-(a) instance
+ * whose canonical code matches the live `joinedKey` (case-insensitive) *and that
+ * has already started* (`start ≤ now`). The started gate matters because a
+ * recurring meeting shares one Meet code across every occurrence — without it,
+ * joining today's occurrence would match next week's too. This is the *live*
+ * signal the plugin samples to grow its durable {@link joinIdentity} memory; the
+ * held state ({@link applyDismissal}/`heldKeys`) is what survives leaving.
  *
- * Two independent dismissal paths, both always on (the extension is optional, so
- * the time-based one is primary):
+ * @param inst       an ordered {@link selectMeetings} instance.
+ * @param joinedKey  the §10 live join key (e.g. `"gmeet:abc-def-ghi"`), or `null`.
+ * @param now        the reference instant.
+ */
+export function isJoined(inst: MeetingInstance, joinedKey: string | null, now: Date): boolean {
+  if (!joinedKey) return false;
+  const c = inst.candidate;
+  return (
+    c.tier === "a" &&
+    c.code !== undefined &&
+    c.code.toLowerCase() === joinedKey.toLowerCase() &&
+    inst.start.getTime() <= now.getTime()
+  );
+}
+
+/**
+ * Apply §10 **dismissal** to the ordered list, returning only the instances a
+ * key should still surface. This is the pre-filter the render clock and press
+ * handler run before {@link currentInstance} / {@link displayHorizon}.
  *
- * 1. **Grace fallback (§10).** Any instance whose start is more than
- *    `graceMinutes` in the past is dismissed — the flashing "late" state ends at
- *    `start + graceMinutes`. Combined with {@link currentInstance}'s own
- *    `end > now` filter downstream, this realizes the spec's
- *    `min(join-proof, start + graceMinutes, DTEND)` cap (a meeting that already
- *    ended never out-lasts its own `DTEND`). `graceMinutes` is per-key (§3).
- * 2. **Windowed join-proof (§10).** When `joinedKey` matches the tier-(a) code
- *    of some tracked instance, *every* instance up to and including the
- *    **latest** such match is dismissed — so joining event N+1 directly still
- *    advances the key past the skipped event N. The compare is case-insensitive.
+ * Every instance stays current until its own `DTEND` (§9) — dismissal here never
+ * drops a meeting merely for being late. A never-joined late meeting keeps
+ * surfacing (its flash calms to a static state at `start + graceMinutes`, an §8
+ * *render* concern — not this function's) until `DTEND`, at which point
+ * {@link currentInstance}'s `end > now` filter advances the key like any other
+ * boundary. A **held** meeting (one whose {@link joinIdentity} is in `heldKeys`,
+ * i.e. you joined it this session) is likewise kept until its `DTEND`, rendered
+ * as the calm in-call countdown (§8); this is **durable** — it survives leaving
+ * the call (the live signal clears but the identity is remembered), so the late
+ * flash never resumes for a meeting you already joined.
  *
- * A **press never counts as join-proof** (§10): only a real `joinedKey` (or the
- * grace timer) dismisses — this function never sees a press.
+ * The one thing dismissal *does* drop is **skip-ahead** casualties: when you join
+ * a later event directly (skipping event N to join N+1), every *non-held*
+ * instance before the latest held one is dropped so the key advances to the held
+ * event you are actually in.
  *
- * @param list         a {@link selectMeetings} result (ordered `start ↑ → end ↑ → uid`).
- * @param now          the reference instant.
- * @param graceMinutes the key's late-state grace in minutes (§3; default 10).
- * @param joinedKey    the §10 join key (e.g. `"gmeet:abc-def-ghi"`), or `null`.
+ * A **press never counts as join-proof** (§10): only a real join affects this —
+ * this function never sees a press.
+ *
+ * @param list      a {@link selectMeetings} result (ordered `start ↑ → end ↑ → uid`).
+ * @param heldKeys  {@link joinIdentity} strings of meetings joined this session.
  */
 export function applyDismissal(
   list: MeetingInstance[],
-  now: Date,
-  graceMinutes: number,
-  joinedKey: string | null,
+  heldKeys: ReadonlySet<string>,
 ): MeetingInstance[] {
-  // Windowed join-proof: the highest index whose tier-(a) code matches the join
-  // key. Everything at or before it is dismissed (advance past skipped events).
-  let joinCut = -1;
-  if (joinedKey) {
-    const key = joinedKey.toLowerCase();
-    for (let i = 0; i < list.length; i++) {
-      const c = list[i].candidate;
-      if (c.tier === "a" && c.code !== undefined && c.code.toLowerCase() === key) {
-        joinCut = i;
-      }
-    }
+  const held = (inst: MeetingInstance): boolean => {
+    const id = joinIdentity(inst);
+    return id !== null && heldKeys.has(id);
+  };
+  // Latest held index: non-held instances *before* it are skip-ahead casualties.
+  let lastHeld = -1;
+  for (let i = 0; i < list.length; i++) {
+    if (held(list[i])) lastHeld = i;
   }
 
-  const graceMs = graceMinutes * 60 * 1000;
-  const nowMs = now.getTime();
   return list.filter((inst, i) => {
-    if (i <= joinCut) return false; // join-proof: dismissed up to & incl. the match
-    return nowMs < inst.start.getTime() + graceMs; // grace fallback: drop once late past grace
+    if (held(inst)) return true; // joined this session → hold until DTEND (§9), never re-flash
+    return i >= lastHeld; // keep, except non-held events skipped before the latest held one
   });
 }
 

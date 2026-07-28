@@ -286,9 +286,10 @@ describe("NextMeetingAction — press → open (§7)", () => {
     }
   });
 
-  it("advances past a joined meeting (§10): a press opens the next event, not the joined one", () => {
+  it("keeps a joined meeting surfaced (§10): a press re-opens it, not the next one", () => {
     // Two live meetings; the first is the one we've joined (join proof matches
-    // its code), so the surfaced event a press opens is the *second*.
+    // its code). It stays current until its end, so offset 0 still surfaces it
+    // and a press re-opens the *joined* meeting, not the second.
     const joined = instance(-5_000, 55_000, {
       title: "Joined",
       candidate: {
@@ -312,7 +313,7 @@ describe("NextMeetingAction — press → open (§7)", () => {
     const deps = { openUrl, joinedKey: () => "gmeet:abc-def-ghi" };
     withKey(service, deps, { feedId: "work", offset: 0 }, (action, key) => {
       action.onKeyDown(keyDownEv(key));
-      expect(openUrl).toHaveBeenCalledWith("https://meet.google.com/next-meet-ing");
+      expect(openUrl).toHaveBeenCalledWith("https://meet.google.com/abc-def-ghi");
     });
   });
 
@@ -372,6 +373,27 @@ describe("NextMeetingAction — setImage encoding", () => {
 
     const svg = lastImage(key);
     expect(svg).toContain("…");
+    action.onWillDisappear(disappearEv(key));
+  });
+
+  it("holds the calm in-call face after leaving a joined meeting, never re-flashing (§10)", () => {
+    // Started 20m ago (past the 10m grace), still running: unjoined this would be
+    // the red overdue state. Join, then leave — the live signal clears but the
+    // durable hold keeps the teal in-call face.
+    const joined = instance(-20 * 60_000, 40 * 60_000, { title: "Sync" });
+    const service = fakeService({ snapshot: { status: "ok", list: [joined] } });
+    let live: string | null = "gmeet:abc-def-ghi";
+    const action = new NextMeetingAction("uuid", service, { now, joinedKey: () => live });
+    const key = fakeKey("k1");
+
+    action.onWillAppear(appearEv(key, { feedId: "work", offset: 0 })); // records the live join
+    expect(lastImage(key)).toContain("#0b2b30"); // teal in-call field while joined
+
+    live = null; // leave the call
+    action.onDidReceiveSettings(appearEv(key, { feedId: "work", offset: 0 })); // repaint
+    const svg = lastImage(key);
+    expect(svg).toContain("#0b2b30"); // still the calm teal in-call face
+    expect(svg).not.toContain("#ff5c50"); // never the red late/overdue flash
     action.onWillDisappear(disappearEv(key));
   });
 });
