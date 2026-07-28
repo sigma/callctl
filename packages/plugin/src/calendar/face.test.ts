@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { joinIdentity } from "./engine.js";
-import { computeFace, type Escalation, type FaceInput } from "./face.js";
+import {
+  computeFace,
+  type Escalation,
+  type FaceInput,
+  MAX_MS,
+  msToNextVisibleChange,
+} from "./face.js";
 import type { MeetingInstance } from "./types.js";
 
 /** A link-bearing instance at a given start; end defaults to +30m. */
@@ -179,5 +185,143 @@ describe("computeFace escalation (§8)", () => {
       const face = computeFace(base({ now: new Date(600), list: [instance(new Date(600 + ms))] }));
       expect(face).toMatchObject({ blinkOff: false });
     }
+  });
+});
+
+describe("msToNextVisibleChange (contract #2–#4)", () => {
+  const MIN = 60_000;
+  const HOUR = 60 * MIN;
+  const WINDOW = 5 * MIN;
+  const IMMINENT_BLINK_HALF = 600;
+  const LATE_FLASH_HALF = 450;
+
+  /** A countdown FaceInput: event starts `msToStart` from `nowMs`, +30m long. */
+  const countdown = (msToStart: number, nowMs = 0, over: Partial<FaceInput> = {}): FaceInput =>
+    base({
+      now: new Date(nowMs),
+      list: [instance(new Date(nowMs + msToStart), "Sync", new Date(nowMs + msToStart + 30 * MIN))],
+      ...over,
+    });
+
+  it("static faces fall through to the MAX_MS backstop", () => {
+    expect(msToNextVisibleChange(base({ status: "loading" }))).toBe(MAX_MS);
+    expect(msToNextVisibleChange(base({ status: "cold-error" }))).toBe(MAX_MS);
+    expect(msToNextVisibleChange(base({ configured: false }))).toBe(MAX_MS);
+    expect(msToNextVisibleChange(base({ list: [] }))).toBe(MAX_MS); // plain Free (none)
+  });
+
+  it("schedules the next whole-second edge in the MM:SS seconds band", () => {
+    // 2 min out → approaching (seconds shown, no blink): next tick is the next second.
+    expect(msToNextVisibleChange(countdown(2 * MIN, 12_345))).toBe(1_000);
+    // A fractional-second offset lands exactly on the coming second, not 1000 later.
+    expect(msToNextVisibleChange(countdown(2 * MIN + 400, 0))).toBe(400);
+  });
+
+  it("the minute/hour band is governed by the MAX_MS backstop (coarse by design)", () => {
+    // Minute ticks (60 s) and hour ticks exceed the 10 s cap, so the render clock
+    // wakes on the backstop and repaints — the minute display is intentionally
+    // ≤ MAX_MS coarse (contract #2), never a tight per-minute alarm timer.
+    expect(msToNextVisibleChange(countdown(20 * MIN + 30_000, 0))).toBe(MAX_MS); // "20m" band
+    expect(msToNextVisibleChange(countdown(2 * HOUR + 30_000, 0))).toBe(MAX_MS); // "2h 00" band
+  });
+
+  it("never overshoots the seconds↔minute boundary (lands on ±window, not past)", () => {
+    // 5m6s out → "5m"; the only change in this band is the crossing back into
+    // seconds at |t| = 5 min. Scheduled *on* the window (6 s), never past it.
+    expect(msToNextVisibleChange(countdown(WINDOW + 6_000, 0))).toBe(6_000);
+  });
+
+  it("never overshoots the minute↔hour boundary (lands on ±hour, not past)", () => {
+    // 1h0m3s out → "1h 00"; the coming change is the crossing to the minute band
+    // at |t| = 1 h. Scheduled on the hour (3 s), not the far interior minute tick.
+    expect(msToNextVisibleChange(countdown(HOUR + 3_000, 0))).toBe(3_000);
+  });
+
+  it("drives imminent repaints off the blink edge, landing exactly on a phase flip", () => {
+    const HALF = IMMINENT_BLINK_HALF;
+    for (const nowMs of [0, 137, 599, 600, 601, 1_000, 4_242]) {
+      // 20 s to start → imminent, seconds regime; the min term is the blink edge.
+      const delta = msToNextVisibleChange(countdown(20_000, nowMs));
+      const blinkEdge = HALF - (nowMs % HALF === 0 ? 0 : nowMs % HALF); // == nextBlinkEdge
+      expect(delta).toBeLessThanOrEqual(blinkEdge); // never later than the blink edge
+      // Landing on the blink edge flips the phase floor(t/HALF)%2 — never between it.
+      if (delta === blinkEdge) {
+        expect(Math.floor((nowMs + delta) / HALF) % 2).not.toBe(Math.floor(nowMs / HALF) % 2);
+      }
+    }
+  });
+
+  it("drives late repaints off the 450 ms flash edge", () => {
+    const HALF = LATE_FLASH_HALF;
+    for (const nowMs of [0, 200, 449, 450, 901]) {
+      // 5 s past start, 10m grace → late (flashing): the flash edge bounds the wait.
+      const delta = msToNextVisibleChange(countdown(-5_000, nowMs));
+      const blinkEdge = HALF - (nowMs % HALF === 0 ? 0 : nowMs % HALF);
+      expect(delta).toBeLessThanOrEqual(blinkEdge);
+    }
+  });
+
+  it("overdue is steady: governed by the backstop, never a sub-second blink", () => {
+    // 15 min past start, 10 min grace → overdue (steady red, +15m count-up). No
+    // flash, so no sub-HALF edge; the minute tick is capped to the backstop.
+    const delta = msToNextVisibleChange(countdown(-15 * MIN, 0));
+    expect(delta).toBe(MAX_MS);
+    expect(delta).toBeGreaterThan(LATE_FLASH_HALF); // definitely not a flash edge
+  });
+
+  it("held (in-call) schedules the count-down-to-end second edge, no blink", () => {
+    // Joined, started 1 min ago, ends in 90 s → active "01:30" ticking to end.
+    const start = new Date(-60_000);
+    const held = instance(start, "Sync", new Date(90_000));
+    const input = base({
+      now: new Date(0),
+      list: [held],
+      heldKeys: new Set([joinIdentity(held) as string]),
+    });
+    expect(computeFace(input).kind).toBe("active");
+    expect(msToNextVisibleChange(input)).toBe(1_000); // next second toward the end
+  });
+
+  it("held near its end schedules the DTEND boundary (meeting advance)", () => {
+    // Ends in 300 ms: the end boundary and the second tick coincide at 300 ms.
+    const held = instance(new Date(-60_000), "Sync", new Date(300));
+    const input = base({
+      now: new Date(0),
+      list: [held],
+      heldKeys: new Set([joinIdentity(held) as string]),
+    });
+    expect(msToNextVisibleChange(input)).toBe(300);
+  });
+
+  it("beyond-horizon Free schedules the beyond→within crossing (when inside MAX_MS)", () => {
+    // Event 24h + 5s out with a 24h horizon → Free; enters the horizon in 5 s.
+    const input = base({
+      now: new Date(0),
+      list: [instance(new Date(24 * HOUR + 5_000), "Later")],
+      horizonMs: 24 * HOUR,
+    });
+    expect(computeFace(input).kind).toBe("free");
+    expect(msToNextVisibleChange(input)).toBe(5_000);
+  });
+
+  it("a far beyond→within crossing is capped by the MAX_MS backstop", () => {
+    // Crossing is 2h out — far past MAX_MS, so the backstop caps the wait.
+    const input = base({
+      now: new Date(0),
+      list: [instance(new Date(26 * HOUR), "Later")],
+      horizonMs: 24 * HOUR,
+    });
+    expect(msToNextVisibleChange(input)).toBe(MAX_MS);
+  });
+
+  it("an earlier meeting's DTEND re-indexes an offset-1 key before its own countdown ticks", () => {
+    // offset 0 ends in 400 ms; the offset-1 key's face changes then (view re-indexes),
+    // sooner than its own far-off minute tick.
+    const now = new Date(0);
+    const list = [
+      instance(new Date(-60_000), "Running", new Date(400)),
+      instance(new Date(20 * MIN + 30_000), "Next"),
+    ];
+    expect(msToNextVisibleChange(base({ now, list, offset: 1 }))).toBe(400);
   });
 });
