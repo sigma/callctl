@@ -44,8 +44,11 @@ describe("renderFaceSvg (§8)", () => {
     expect(s).not.toMatch(/<x>/);
   });
 
-  it("shows the free hint when present", () => {
-    expect(svgOf({ kind: "free", hint: "Mon 9:00" })).toContain("Mon 9:00");
+  it("shows the free hint as a 'til <date>' / <time> signpost when present", () => {
+    const s = svgOf({ kind: "free", hint: { date: "Aug 11", time: "17:00" } });
+    expect(s).toContain("til Aug 11");
+    expect(s).toContain("17:00");
+    expect(s).toContain("Free");
     expect(svgOf({ kind: "free", hint: null })).toContain("Free");
   });
 

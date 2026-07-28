@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatCountdown, formatDayHint } from "./format.js";
+import { formatCountdown, formatMeetingHint } from "./format.js";
 
 const SEC = 1000;
 const MIN = 60 * SEC;
@@ -31,14 +31,19 @@ describe("formatCountdown (§8)", () => {
   });
 });
 
-describe("formatDayHint (§8)", () => {
-  it("renders a machine-local weekday + wall-clock time", () => {
-    // 2026-07-27 is a Monday; 09:05 local.
-    const d = new Date(2026, 6, 27, 9, 5);
-    expect(formatDayHint(d)).toBe("Mon 9:05");
+describe("formatMeetingHint (§8)", () => {
+  it("renders a machine-local month/day date and wall-clock time", () => {
+    // 2026-07-27, 09:05 local.
+    expect(formatMeetingHint(new Date(2026, 6, 27, 9, 5))).toEqual({
+      date: "Jul 27",
+      time: "9:05",
+    });
   });
 
-  it("zero-pads minutes but not the hour", () => {
-    expect(formatDayHint(new Date(2026, 6, 28, 14, 0))).toBe("Tue 14:00");
+  it("zero-pads minutes but not the hour or day", () => {
+    expect(formatMeetingHint(new Date(2026, 7, 8, 14, 0))).toEqual({
+      date: "Aug 8",
+      time: "14:00",
+    });
   });
 });

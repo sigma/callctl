@@ -93,10 +93,13 @@ export function renderFaceSvg(face: KeyFace): string {
       return svg(`${titleStrip(face.title)}${text(face.time, 90, 40, fg, "bold", opacity)}`);
     }
     case "free":
+      // No next meeting → a single centred "Free". Otherwise stack the signpost:
+      // "Free" over "til <date>" over "<time>", the date/time lines in the title
+      // strip colour so "til" reads as the bridge into the next-meeting date (§8).
       return svg(
         face.hint === null
           ? text("Free", 84, 34, COLOR.free, "bold")
-          : `${text("Free", 68, 30, COLOR.free, "bold")}${text(face.hint, 100, 18, COLOR.title)}`,
+          : `${text("Free", 54, 30, COLOR.free, "bold")}${text(`til ${face.hint.date}`, 90, 18, COLOR.title)}${text(face.hint.time, 116, 18, COLOR.title)}`,
       );
     case "unconfigured":
       // Setup prompt — visually distinct (blue) from Free (green) and error (red).

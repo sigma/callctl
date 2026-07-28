@@ -67,11 +67,11 @@ describe("computeFace (§8 baseline)", () => {
     }
   });
 
-  it("shows Free + a day hint when the next event is beyond the horizon", () => {
-    const now = new Date(2026, 6, 27, 9, 0); // Mon
+  it("shows Free + a date/time hint when the next event is beyond the horizon", () => {
+    const now = new Date(2026, 6, 27, 9, 0);
     // +24h exactly — at the (strict) 24h horizon, so still beyond → Free + hint.
-    const face = computeFace(base({ now, list: [instance(new Date(2026, 6, 28, 9, 0))] })); // Tue
-    expect(face).toEqual({ kind: "free", hint: "Tue 9:00" });
+    const face = computeFace(base({ now, list: [instance(new Date(2026, 6, 28, 9, 0))] }));
+    expect(face).toEqual({ kind: "free", hint: { date: "Jul 28", time: "9:00" } });
   });
 
   it("counts down across local midnight (event on the next date, still within horizon)", () => {

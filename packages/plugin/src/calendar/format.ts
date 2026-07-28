@@ -6,7 +6,28 @@
 
 const pad2 = (n: number): string => (n < 10 ? `0${n}` : `${n}`);
 
-const DAY_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const MONTH = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+/** The two-line "Free"-face signpost: a calendar date and a wall-clock time. */
+export interface MeetingHint {
+  /** Month + day, e.g. `Aug 11` — un-abbreviated day, month name. */
+  date: string;
+  /** Wall-clock `H:MM`, e.g. `9:05` / `17:00` (hour un-padded, minutes zero-padded). */
+  time: string;
+}
 
 /** `MM:SS`, or `Hh MM` once past an hour. */
 function clock(totalSec: number): string {
@@ -39,10 +60,16 @@ export function formatCountdown(msRemaining: number): string {
 }
 
 /**
- * A next-meeting hint for the "Free" face when the next in-scope event starts on
- * a future day (§8), e.g. `Mon 9:00`. Uses the machine-local weekday and
- * wall-clock time (§5 "Displayed times … use the machine-local timezone").
+ * The next-meeting hint for the "Free" face when the next in-scope event starts
+ * further out than the countdown horizon (§8). Returns an explicit **date** and
+ * **time** (e.g. `{ date: "Aug 11", time: "17:00" }`) rather than a weekday, so a
+ * meeting weeks out is unambiguous — a bare weekday repeats and can't be placed.
+ * Uses the machine-local date and wall-clock time (§5 "Displayed times … use the
+ * machine-local timezone").
  */
-export function formatDayHint(start: Date): string {
-  return `${DAY_OF_WEEK[start.getDay()]} ${start.getHours()}:${pad2(start.getMinutes())}`;
+export function formatMeetingHint(start: Date): MeetingHint {
+  return {
+    date: `${MONTH[start.getMonth()]} ${start.getDate()}`,
+    time: `${start.getHours()}:${pad2(start.getMinutes())}`,
+  };
 }

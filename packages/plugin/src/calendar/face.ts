@@ -12,7 +12,8 @@
  */
 
 import { displayHorizon } from "./engine.js";
-import { formatCountdown, formatDayHint } from "./format.js";
+import type { MeetingHint } from "./format.js";
+import { formatCountdown, formatMeetingHint } from "./format.js";
 import type { FeedStatus, MeetingInstance } from "./types.js";
 
 /**
@@ -66,8 +67,8 @@ export type KeyFace =
   | { kind: "unconfigured" }
   /** A poll failed and there is no cache to fall back on (§9) — distinct attention state. */
   | { kind: "error" }
-  /** Between meetings; `hint` is the next-meeting signpost (future day) or `null`. */
-  | { kind: "free"; hint: string | null }
+  /** Between meetings; `hint` is the next-meeting signpost (date + time) or `null`. */
+  | { kind: "free"; hint: MeetingHint | null }
   /**
    * A live countdown to (or overdue count-up past) the key's event. `escalation`
    * picks the §8 colour/behaviour; `blinkOff` is `true` on the off half of the
@@ -118,7 +119,7 @@ export function computeFace(input: FaceInput): KeyFace {
       };
     }
     case "beyond":
-      return { kind: "free", hint: formatDayHint(horizon.instance.start) };
+      return { kind: "free", hint: formatMeetingHint(horizon.instance.start) };
     case "none":
       return { kind: "free", hint: null };
   }
