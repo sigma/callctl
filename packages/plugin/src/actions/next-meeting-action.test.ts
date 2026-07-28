@@ -194,6 +194,38 @@ describe("NextMeetingAction — press → open (§7)", () => {
     });
   });
 
+  it("opens the calendar home, not the join link, for a 'Free' beyond-horizon event", () => {
+    // A tier-(a) event two days out — past the default 24h horizon, so the key
+    // reads "Free". Pressing it opens the calendar, never the far-off join link.
+    const twoDays = 2 * 24 * 60 * 60 * 1000;
+    const service = fakeService({
+      snapshot: { status: "ok", list: [instance(NOW + twoDays, NOW + twoDays + 60_000)] },
+      fallback: "https://calendar.google.com",
+    });
+    const openUrl = vi.fn(async () => {});
+    withKey(service, { openUrl }, { feedId: "work", offset: 0 }, (action, key) => {
+      action.onKeyDown(keyDownEv(key));
+      expect(openUrl).toHaveBeenCalledWith("https://calendar.google.com");
+      expect(openUrl).not.toHaveBeenCalledWith("https://meet.google.com/abc-def-ghi");
+      expect(service.calendarFallback).toHaveBeenCalledWith("work");
+      expect(key.showAlert).not.toHaveBeenCalled();
+    });
+  });
+
+  it("is a safe no-op for a 'Free' beyond-horizon event with no derivable calendar", () => {
+    const twoDays = 2 * 24 * 60 * 60 * 1000;
+    const service = fakeService({
+      snapshot: { status: "ok", list: [instance(NOW + twoDays, NOW + twoDays + 60_000)] },
+      fallback: undefined,
+    });
+    const openUrl = vi.fn(async () => {});
+    withKey(service, { openUrl }, { feedId: "work", offset: 0 }, (action, key) => {
+      action.onKeyDown(keyDownEv(key));
+      expect(openUrl).not.toHaveBeenCalled();
+      expect(key.showAlert).toHaveBeenCalled();
+    });
+  });
+
   it("acknowledges an idle Free press without opening anything", () => {
     const service = fakeService({ snapshot: { status: "ok", list: [] } });
     const openUrl = vi.fn(async () => {});

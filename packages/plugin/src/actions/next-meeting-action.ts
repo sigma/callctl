@@ -7,7 +7,7 @@ import {
   type WillDisappearEvent,
 } from "@elgato/streamdeck";
 
-import { applyDismissal, currentInstance } from "../calendar/engine.js";
+import { applyDismissal, currentInstance, displayHorizon } from "../calendar/engine.js";
 import { computeFace } from "../calendar/face.js";
 import { renderFaceSvg } from "../calendar/render.js";
 import type { CalendarService } from "../calendar/service.js";
@@ -145,12 +145,17 @@ export class NextMeetingAction extends SingletonAction {
 
   /**
    * Press → open (§7 tier 1). Opens the surfaced event's target in the default
-   * browser via the host-delegated {@link NextMeetingDeps.openUrl}:
+   * browser via the host-delegated {@link NextMeetingDeps.openUrl}, matching what
+   * the key's face shows:
    *
-   * - **tier (a)** → the canonicalized `joinUrl` (§6.3), reconstructed & safe.
-   * - **tier (b)** → the feed-derived calendar fallback (§6.4), never the
-   *   event's untrusted `URL`.
-   * - **no surfaced event** (Free / unconfigured / error / loading) → a safe
+   * - **counting down** (event within the display horizon) →
+   *   - **tier (a)** → the canonicalized `joinUrl` (§6.3), reconstructed & safe.
+   *   - **tier (b)** → the feed-derived calendar fallback (§6.4), never the
+   *     event's untrusted `URL`.
+   * - **"Free"** (a next event exists but is beyond the horizon) → the calendar
+   *   home itself (§6.4), *not* the far-off meeting's join link — opening a call
+   *   you are not near makes no sense; the calendar is the useful destination.
+   * - **nothing surfaced** (idle Free / unconfigured / error / loading) → a safe
    *   no-op that never opens a stale URL: `showAlert` for a config gap,
    *   `showOk` between meetings.
    *
@@ -167,29 +172,37 @@ export class NextMeetingAction extends SingletonAction {
 
     const now = this.#now();
     const snapshot = settings.feedId === "" ? undefined : this.#service.snapshot(settings.feedId);
-    // Press opens the *surfaced* (post-§10-dismissal) event, never a dismissed
-    // late one. A press is not join-proof, so it never itself dismisses.
-    const current =
-      snapshot === undefined
-        ? undefined
-        : currentInstance(
-            applyDismissal(snapshot.list, now, settings.graceMinutes, this.#joinedKey()),
-            settings.offset,
-            now,
-          );
-
-    if (current === undefined) {
-      // Nothing surfaced: never open a stale/previous URL (§7). Nudge to setup
-      // when the feed is missing; acknowledge an idle "Free" press otherwise.
-      if (snapshot === undefined) void ev.action.showAlert();
-      else void ev.action.showOk();
+    if (snapshot === undefined) {
+      // No feed configured/known: never open a stale URL — nudge to setup (§7).
+      void ev.action.showAlert();
       return;
     }
 
-    const target = this.#openTarget(current.candidate, settings.feedId);
+    // Classify the *surfaced* (post-§10-dismissal) event exactly as the face does,
+    // so the press target matches what the key shows. A press is not join-proof,
+    // so it never itself dismisses.
+    const horizon = displayHorizon(
+      applyDismissal(snapshot.list, now, settings.graceMinutes, this.#joinedKey()),
+      settings.offset,
+      now,
+      settings.horizonMinutes * 60 * 1000,
+    );
+
+    if (horizon.kind === "none") {
+      // Between meetings, nothing surfaced — acknowledge the idle "Free" press (§7).
+      void ev.action.showOk();
+      return;
+    }
+
+    // "Free" (beyond horizon) opens the calendar home; a live countdown opens the
+    // event's join link (tier a) or its own calendar fallback (tier b).
+    const target =
+      horizon.kind === "beyond"
+        ? this.#service.calendarFallback(settings.feedId)
+        : this.#openTarget(horizon.instance.candidate, settings.feedId);
     if (target === undefined) {
-      // Tier-(b) event but no derivable fallback (unparseable feed origin) —
-      // safe no-op, flag it rather than open nothing silently.
+      // No derivable calendar fallback (unparseable feed origin) — safe no-op,
+      // flag it rather than open nothing silently.
       void ev.action.showAlert();
       return;
     }
