@@ -70,6 +70,23 @@ describe("parseGlobalSettings (§3)", () => {
     expect(g.feeds[1].open).toBeUndefined();
     expect(g.feeds[2].open).toBeUndefined();
   });
+
+  it("keeps a known border-color token and drops absent/empty/unknown/raw-hex (#78)", () => {
+    const g = parseGlobalSettings({
+      feeds: [
+        { id: "a", name: "A", url: "https://h/a.ics", color: "teal" },
+        { id: "b", name: "B", url: "https://h/b.ics", color: "puce" },
+        { id: "c", name: "C", url: "https://h/c.ics", color: "#ff5c8a" },
+        { id: "d", name: "D", url: "https://h/d.ics", color: "" },
+        { id: "e", name: "E", url: "https://h/e.ics" },
+      ],
+    });
+    expect(g.feeds[0].color).toBe("teal");
+    expect(g.feeds[1].color).toBeUndefined();
+    expect(g.feeds[2].color).toBeUndefined();
+    expect(g.feeds[3].color).toBeUndefined();
+    expect(g.feeds[4].color).toBeUndefined();
+  });
 });
 
 describe("parseKeySettings (§3)", () => {

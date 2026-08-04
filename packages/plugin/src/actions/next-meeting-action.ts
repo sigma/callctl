@@ -387,7 +387,11 @@ export class NextMeetingAction extends SingletonAction {
       horizonMs: settings.horizonMinutes * 60 * 1000,
       heldKeys: this.#joinedOccurrences,
     };
-    void action.setImage(svgToImageUri(renderFaceSvg(computeFace(faceInput))));
+    // The per-feed border (#78) is feed identity, threaded orthogonally to the
+    // face. An empty/dangling feed has none, so its unconfigured face stays bare.
+    const borderColor =
+      settings.feedId === "" ? undefined : this.#service.borderColor(settings.feedId);
+    void action.setImage(svgToImageUri(renderFaceSvg(computeFace(faceInput), borderColor)));
     // Re-arm the render clock off the *same* inputs we just painted: repaint
     // exactly when this face next moves (contract #2), never on a fixed tick.
     this.#scheduleNextPaint(id, msToNextVisibleChange(faceInput));
