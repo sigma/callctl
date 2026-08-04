@@ -158,6 +158,42 @@
       .open-controls select {
         flex: 0 0 108px;
       }
+      /* Per-feed border color picker (#78/#81): a row of round swatches. */
+      .swatches {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        align-items: center;
+        min-width: 0;
+      }
+      .swatch {
+        width: 20px;
+        height: 20px;
+        padding: 0;
+        border-radius: 50%;
+        border: 2px solid transparent;
+        background-clip: padding-box;
+        cursor: pointer;
+      }
+      .swatch:hover {
+        border-color: var(--muted);
+      }
+      /* The active swatch: a white ring set off from the fill by the panel colour. */
+      .swatch.selected {
+        border-color: #fff;
+        box-shadow: 0 0 0 2px var(--accent);
+      }
+      /* "No border" chip: the field colour struck through with a diagonal line. */
+      .swatch.none {
+        background: linear-gradient(
+            to top right,
+            transparent 44%,
+            var(--muted) 44%,
+            var(--muted) 56%,
+            transparent 56%
+          ),
+          var(--field);
+      }
     </style>
   </head>
   <body>
@@ -218,6 +254,10 @@
           <button class="f-test">Test</button>
         </div>
         <div class="msg muted f-status"></div>
+        <div class="line">
+          <label>Color</label>
+          <div class="f-colors swatches"></div>
+        </div>
         <div class="line open-controls">
           <label>Open in</label>
           <select class="f-browser">
@@ -265,6 +305,24 @@
       let global = { feeds: [], pollIntervalMinutes: 15 };
       let keySettings = { feedId: "", offset: 0, horizonMinutes: 1440 };
       const pendingTests = new Map(); // requestId -> status element
+
+      // The 10 border tokens → hex (#78/#79). This is a HAND-MIRROR of PALETTE in
+      // src/calendar/palette.ts — a PI is a static file, not part of the bundle,
+      // so it can't import the resolver. Keep the two lists in sync: the token
+      // NAMES are what persists into NamedFeed.color; the hexes are only shown.
+      const PALETTE = [
+        ["rose", "#ff5c8a"],
+        ["orange", "#ff8c42"],
+        ["gold", "#ffc61a"],
+        ["lime", "#a3e635"],
+        ["green", "#3fd160"],
+        ["teal", "#14c8b0"],
+        ["sky", "#38bdf8"],
+        ["blue", "#6086ff"],
+        ["violet", "#a855f7"],
+        ["magenta", "#e05bd6"],
+      ];
+      const isKnownToken = (t) => PALETTE.some(([token]) => token === t);
 
       const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -363,6 +421,33 @@
         for (const feed of global.feeds) host.appendChild(renderFeedRow(feed));
       }
 
+      // Paint the 11 swatches (a "no border" chip + the 10 tokens) into `host`,
+      // marking the feed's current color selected. A stale/unknown stored token
+      // matches nothing → the "none" chip reads selected, mirroring the render
+      // side (an unknown token resolves to no border). Clicking persists the
+      // token (or clears it) via commitGlobal, then repaints the selection.
+      function renderSwatches(host, feed) {
+        host.innerHTML = "";
+        const current = isKnownToken(feed.color) ? feed.color : null;
+        const chip = (token, hex, label) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "swatch" + (token === null ? " none" : "");
+          if (hex) b.style.background = hex;
+          b.title = label;
+          if (current === token) b.classList.add("selected");
+          b.addEventListener("click", () => {
+            if (token === null) delete feed.color;
+            else feed.color = token;
+            commitGlobal();
+            renderSwatches(host, feed);
+          });
+          return b;
+        };
+        host.appendChild(chip(null, null, "No border"));
+        for (const [token, hex] of PALETTE) host.appendChild(chip(token, hex, token));
+      }
+
       function renderFeedRow(feed) {
         const node = $("#feed-tpl").content.firstElementChild.cloneNode(true);
         const nameEl = $(".f-name", node);
@@ -371,11 +456,13 @@
         const testEl = $(".f-test", node);
         const removeEl = $(".f-remove", node);
         const statusEl = $(".f-status", node);
+        const colorsEl = $(".f-colors", node);
         const browserEl = $(".f-browser", node);
         const profileEl = $(".f-profile", node);
 
         nameEl.value = feed.name || "";
         urlEl.value = feed.url || "";
+        renderSwatches(colorsEl, feed);
         browserEl.value = feed.open ? feed.open.browser : "";
         profileEl.value = feed.open ? feed.open.profile : "";
 
