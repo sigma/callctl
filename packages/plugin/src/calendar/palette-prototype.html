@@ -1,0 +1,167 @@
+<!doctype html>
+<!--
+  PROTOTYPE — wayfinder #79 — DELETE ME once the palette+geometry are chosen.
+
+  Question: which 10 pastel palette tokens (name → hex) and what border geometry
+  (width / inset / radius) for the per-calendar border on next-meeting keys?
+
+  Throwaway. Faithfully reproduces the four fields from
+  packages/plugin/src/calendar/render.ts and draws a candidate border over each,
+  for all 10 palette candidates at once. Tune geometry with the sliders, tune any
+  individual hex with its color input, read the verdict off the grid.
+
+  Run: just open this file in a browser (macOS: `open packages/plugin/src/calendar/palette-prototype.html`).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>PROTOTYPE #79 — per-calendar border palette</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: #0d1117;
+        color: #e6edf3;
+        font-family: -apple-system, Helvetica, Arial, sans-serif;
+      }
+      h1 { font-size: 16px; font-weight: 600; margin: 0 0 4px; }
+      p.sub { margin: 0 0 20px; color: #8b949e; font-size: 12px; }
+      .controls {
+        display: flex; gap: 24px; flex-wrap: wrap;
+        padding: 12px 16px; margin-bottom: 24px;
+        background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+      }
+      .controls label { display: flex; flex-direction: column; font-size: 11px; color: #8b949e; gap: 4px; }
+      .controls output { color: #e6edf3; font-variant-numeric: tabular-nums; }
+      input[type="range"] { width: 160px; }
+      table { border-collapse: collapse; }
+      th { font-size: 11px; color: #8b949e; font-weight: 500; padding: 6px 10px; text-align: center; }
+      th.fieldname { min-width: 84px; }
+      td { padding: 6px 10px; text-align: center; vertical-align: middle; }
+      .token { display: flex; align-items: center; gap: 8px; }
+      .token input[type="color"] { width: 22px; height: 22px; padding: 0; border: none; background: none; }
+      .token .name { font-size: 12px; }
+      .token .hex { font-size: 11px; color: #8b949e; font-variant-numeric: tabular-nums; width: 62px; text-align: left; }
+      .key { width: 72px; height: 72px; display: block; border-radius: 12px; }
+      svg { display: block; }
+    </style>
+  </head>
+  <body>
+    <h1>PROTOTYPE #79 — per-calendar border palette &amp; geometry</h1>
+    <p class="sub">
+      10 candidate pastel tokens × 4 fields. Keys shown at true 72×72. Tune the
+      geometry sliders and any individual hex, then judge: (a) mutually
+      distinguishable? (b) legible over <em>every</em> field incl. red flash +
+      teal in-call? (c) pastel enough not to read as its own alarm?
+    </p>
+
+    <div class="controls">
+      <label>frame width <output id="wOut"></output>
+        <input id="w" type="range" min="1" max="8" step="0.5" value="3" />
+      </label>
+      <label>inset from edge <output id="iOut"></output>
+        <input id="i" type="range" min="0" max="8" step="0.5" value="1" />
+      </label>
+      <label>corner radius <output id="rOut"></output>
+        <input id="r" type="range" min="0" max="16" step="1" value="12" />
+      </label>
+    </div>
+
+    <table id="grid"></table>
+
+    <script type="module">
+      // ---- Fields, reproduced faithfully from render.ts (authored @2x = 144) ----
+      const SIZE = 144;
+      const C = {
+        bg: "#1c2128", countdown: "#e6edf3", title: "#8b949e",
+        free: "#3fb950", active: "#39c5cf", activeBg: "#0b2b30",
+        late: "#ff5c50",
+      };
+      const esc = (s) => s.replace(/[<>&'"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" }[c]));
+      const text = (content, y, size, fill, weight = "normal") =>
+        `<text x="72" y="${y}" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="${size}" font-weight="${weight}" fill="${fill}">${esc(content)}</text>`;
+      const titleStrip = (t, fill = C.title) => text(t, 26, 16, fill);
+
+      // Each field returns { bg, body } — the render.ts branches, verbatim shapes.
+      const FIELDS = [
+        { name: "normal countdown", bg: C.bg,
+          body: titleStrip("Standup") + text("04:32", 90, 40, C.countdown, "bold") },
+        { name: "Free", bg: C.bg,
+          body: text("Free", 84, 34, C.free, "bold") },
+        { name: "red late-flash", bg: C.late,
+          body: titleStrip("Standup", C.bg) + text("00:12", 90, 40, C.bg, "bold") },
+        { name: "teal in-call", bg: C.activeBg,
+          body: titleStrip("Standup") + text("12:30", 90, 40, C.active, "bold") },
+      ];
+
+      // ---- 10 bright, saturated candidates, spread around the wheel (editable live) ----
+      // Pastel was rejected (hurts readability at key size); go vivid instead.
+      const PALETTE = [
+        { token: "rose",    hex: "#ff5c8a" },
+        { token: "orange",  hex: "#ff8c42" },
+        { token: "gold",    hex: "#ffc61a" },
+        { token: "lime",    hex: "#a3e635" },
+        { token: "green",   hex: "#3fd160" },
+        { token: "teal",    hex: "#14c8b0" },
+        { token: "sky",     hex: "#38bdf8" },
+        { token: "blue",    hex: "#6086ff" },
+        { token: "violet",  hex: "#a855f7" },
+        { token: "magenta", hex: "#e05bd6" },
+      ];
+
+      const geom = { w: 3, i: 1, r: 12 };
+
+      // border rect, in @2x units (×2 of the on-key px shown on the sliders)
+      function borderRect(color) {
+        const w = geom.w * 2, inset = geom.i * 2, r = geom.r * 2;
+        const x = inset + w / 2;
+        const side = SIZE - 2 * x;
+        const rr = Math.max(0, r - x);
+        return `<rect x="${x}" y="${x}" width="${side}" height="${side}" rx="${rr}" fill="none" stroke="${color}" stroke-width="${w}"/>`;
+      }
+
+      function keySvg(field, color) {
+        return `<svg class="key" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SIZE} ${SIZE}"><rect width="${SIZE}" height="${SIZE}" fill="${field.bg}"/>${field.body}${color ? borderRect(color) : ""}</svg>`;
+      }
+
+      // ---- render the grid ----
+      const grid = document.getElementById("grid");
+      function build() {
+        let html = "<thead><tr><th>token</th>";
+        html += `<th class="fieldname">no border</th>`;
+        for (const f of FIELDS) html += `<th class="fieldname">${f.name}</th>`;
+        html += "</tr></thead><tbody>";
+        for (const p of PALETTE) {
+          html += `<tr><td><div class="token">`;
+          html += `<input type="color" data-token="${p.token}" value="${p.hex}" />`;
+          html += `<span class="name">${p.token}</span><span class="hex" data-hex="${p.token}">${p.hex}</span></div></td>`;
+          // reference column: field with no border (first field only) so drift is obvious
+          html += `<td>${keySvg(FIELDS[0], null)}</td>`;
+          for (const f of FIELDS) html += `<td>${keySvg(f, p.hex)}</td>`;
+          html += "</tr>";
+        }
+        html += "</tbody>";
+        grid.innerHTML = html;
+        for (const inp of grid.querySelectorAll('input[type="color"]')) {
+          inp.addEventListener("input", (e) => {
+            const tok = e.target.dataset.token;
+            PALETTE.find((p) => p.token === tok).hex = e.target.value;
+            build();
+          });
+        }
+      }
+
+      function bindSlider(id, key, out) {
+        const el = document.getElementById(id);
+        const o = document.getElementById(out);
+        const sync = () => { geom[key] = parseFloat(el.value); o.textContent = `${el.value}px`; build(); };
+        el.addEventListener("input", sync);
+        sync();
+      }
+      bindSlider("w", "w", "wOut");
+      bindSlider("i", "i", "iOut");
+      bindSlider("r", "r", "rOut");
+    </script>
+  </body>
+</html>
