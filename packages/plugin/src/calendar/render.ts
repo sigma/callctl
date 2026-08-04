@@ -12,6 +12,7 @@
  */
 
 import type { Escalation, KeyFace } from "./face.js";
+import { BORDER } from "./palette.js";
 
 /** Stream Deck keys render at 72×72; we author at 144 for @2x crispness. */
 const SIZE = 144;
@@ -64,9 +65,28 @@ function text(
   return `<text x="72" y="${y}" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="${size}" font-weight="${weight}" fill="${fill}"${op}>${escapeXml(content)}</text>`;
 }
 
-/** A full 72×72 @2x document; `bg` overrides the field for late's hard flash (§8). */
-function svg(body: string, bg: string = COLOR.bg): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${SIZE}" height="${SIZE}" viewBox="0 0 ${SIZE} ${SIZE}"><rect width="${SIZE}" height="${SIZE}" fill="${bg}"/>${body}</svg>`;
+/**
+ * A full 72×72 @2x document; `bg` overrides the field for late's hard flash (§8).
+ * `border` (a per-feed identity frame, #78) draws last so it sits above the body.
+ */
+function svg(body: string, bg: string = COLOR.bg, border = ""): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${SIZE}" height="${SIZE}" viewBox="0 0 ${SIZE} ${SIZE}"><rect width="${SIZE}" height="${SIZE}" fill="${bg}"/>${body}${border}</svg>`;
+}
+
+/**
+ * The per-feed border frame (#78/#79): a thin stroked rect just inside the key
+ * edge, geometry from {@link BORDER} (on-key px, doubled here for @2x). `fill`
+ * stays `none` so it never obscures the face or the field beneath it.
+ */
+function borderRect(color: string): string {
+  const w = BORDER.width * 2;
+  const inset = BORDER.inset * 2;
+  const radius = BORDER.radius * 2;
+  // Stroke straddles its path, so inset by half the width to keep it on-canvas.
+  const x = inset + w / 2;
+  const side = SIZE - 2 * x;
+  const rx = Math.max(0, radius - x);
+  return `<rect x="${x}" y="${x}" width="${side}" height="${side}" rx="${rx}" fill="none" stroke="${color}" stroke-width="${w}"/>`;
 }
 
 /** A short title trimmed to a strip-friendly length. */
@@ -79,8 +99,16 @@ function titleStrip(title: string, fill: string = COLOR.title): string {
 /**
  * Render the SVG for a face. Every branch returns a complete `<svg>` document
  * (72×72 @2x) suitable for `setImage`.
+ *
+ * `borderColor` is the resolved per-feed identity hex (#78), threaded in
+ * **orthogonally to {@link KeyFace}** — the border is feed identity, not a face
+ * property. It paints on every feed-resolved face (including the red late-flash
+ * and teal in-call fields); `unconfigured` has no feed, so it never gets one.
  */
-export function renderFaceSvg(face: KeyFace): string {
+export function renderFaceSvg(face: KeyFace, borderColor?: string): string {
+  // Every face but `unconfigured` carries the feed's border, when one is set.
+  const border =
+    borderColor !== undefined && face.kind !== "unconfigured" ? borderRect(borderColor) : "";
   switch (face.kind) {
     case "countdown": {
       // Late hard flash (§8): on the off half, invert to a solid red field with
@@ -89,13 +117,18 @@ export function renderFaceSvg(face: KeyFace): string {
         return svg(
           `${titleStrip(face.title, COLOR.bg)}${text(face.time, 90, 40, COLOR.bg, "bold")}`,
           COLOR.late,
+          border,
         );
       }
       // Big MM:SS centred, title a thin top strip (Variant A). Colour by
       // escalation; imminent's gentle blink dims the glyph on the off half.
       const fg = ESCALATION_COLOR[face.escalation];
       const opacity = face.escalation === "imminent" && face.blinkOff ? BLINK_DIM : 1;
-      return svg(`${titleStrip(face.title)}${text(face.time, 90, 40, fg, "bold", opacity)}`);
+      return svg(
+        `${titleStrip(face.title)}${text(face.time, 90, 40, fg, "bold", opacity)}`,
+        COLOR.bg,
+        border,
+      );
     }
     case "active":
       // In-call (§10): same big-countdown layout as a live countdown, but a calm
@@ -103,6 +136,7 @@ export function renderFaceSvg(face: KeyFace): string {
       return svg(
         `${titleStrip(face.title)}${text(face.time, 90, 40, COLOR.active, "bold")}`,
         COLOR.activeBg,
+        border,
       );
     case "free":
       // No next meeting → a single centred "Free". Otherwise stack the signpost:
@@ -112,9 +146,12 @@ export function renderFaceSvg(face: KeyFace): string {
         face.hint === null
           ? text("Free", 84, 34, COLOR.free, "bold")
           : `${text("Free", 54, 30, COLOR.free, "bold")}${text(`til ${face.hint.date}`, 90, 18, COLOR.title)}${text(face.hint.time, 116, 18, COLOR.title)}`,
+        COLOR.bg,
+        border,
       );
     case "unconfigured":
-      // Setup prompt — visually distinct (blue) from Free (green) and error (red).
+      // Setup prompt — visually distinct (blue) from Free (green) and error
+      // (red). No feed ⇒ never a border.
       return svg(
         `${text("Set up", 68, 24, COLOR.setup, "bold")}${text("feed", 96, 20, COLOR.setup)}`,
       );
@@ -122,8 +159,10 @@ export function renderFaceSvg(face: KeyFace): string {
       // Cold-start error — dedicated attention glyph, muted red (§8).
       return svg(
         `${text("!", 74, 52, COLOR.error, "bold")}${text("No data", 108, 18, COLOR.error)}`,
+        COLOR.bg,
+        border,
       );
     case "loading":
-      return svg(text("…", 92, 44, COLOR.title, "bold"));
+      return svg(text("…", 92, 44, COLOR.title, "bold"), COLOR.bg, border);
   }
 }

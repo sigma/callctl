@@ -15,6 +15,7 @@ import type { OpenTarget } from "../open/profile-open.js";
 import type { GlobalSettings } from "../settings.js";
 import { parseFeed, selectMeetings } from "./engine.js";
 import { calendarFallbackUrl, type FeedValidators, fetchFeed } from "./fetch.js";
+import { resolvePaletteColor } from "./palette.js";
 import type { FeedSnapshot, FeedStatus, MeetingInstance } from "./types.js";
 
 /** Per-poll options, forwarded to {@link fetchFeed}; the fake `fetch` rides here in tests. */
@@ -32,6 +33,8 @@ class FeedCache {
   #url: string;
   /** Optional tier-2 profile-open target (§7); reconciled from settings, never invalidates the cache. */
   #open: OpenTarget | undefined;
+  /** Optional resolved per-feed border hex (#78); reconciled from settings, pure metadata. */
+  #borderColor: string | undefined;
   #validators: FeedValidators | undefined;
   #list: MeetingInstance[] = [];
   #status: FeedStatus = "loading";
@@ -77,6 +80,16 @@ class FeedCache {
   /** Update the tier-2 profile-open target (§7). Pure metadata — never touches the cache. */
   setOpen(open: OpenTarget | undefined): void {
     this.#open = open;
+  }
+
+  /** This feed's resolved border hex (#78), or `undefined` for no border. */
+  get borderColor(): string | undefined {
+    return this.#borderColor;
+  }
+
+  /** Update the resolved border hex (#78). Pure metadata — never touches the cache. */
+  setBorderColor(color: string | undefined): void {
+    this.#borderColor = color;
   }
 
   poll(now: Date, opts: PollOptions): Promise<void> {
@@ -156,12 +169,15 @@ export class CalendarService {
     for (const feed of global.feeds) {
       seen.add(feed.id);
       const existing = this.#feeds.get(feed.id);
+      const color = resolvePaletteColor(feed.color);
       if (existing) {
         existing.setUrl(feed.url);
         existing.setOpen(feed.open);
+        existing.setBorderColor(color);
       } else {
         const cache = new FeedCache(feed.id, feed.url);
         cache.setOpen(feed.open);
+        cache.setBorderColor(color);
         this.#feeds.set(feed.id, cache);
       }
     }
@@ -201,6 +217,14 @@ export class CalendarService {
    */
   openConfig(feedId: string): OpenTarget | undefined {
     return this.#feeds.get(feedId)?.open;
+  }
+
+  /**
+   * A feed's resolved border hex (#78), or `undefined` when it has no color set
+   * or the feed is unknown — the renderer draws no border in either case.
+   */
+  borderColor(feedId: string): string | undefined {
+    return this.#feeds.get(feedId)?.borderColor;
   }
 
   /** Force one conditional-GET poll of a single feed. No-op for an unknown feed. */

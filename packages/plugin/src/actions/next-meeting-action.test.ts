@@ -32,6 +32,7 @@ function fakeService(opts: {
   snapshot?: FeedSnapshot;
   fallback?: string;
   open?: OpenTarget;
+  borderColor?: string;
 }): CalendarService & { poll: ReturnType<typeof vi.fn> } {
   const svc = {
     pollIntervalMinutes: 15,
@@ -40,6 +41,7 @@ function fakeService(opts: {
     pollAll: vi.fn(async () => {}),
     calendarFallback: vi.fn(() => opts.fallback),
     openConfig: vi.fn(() => opts.open),
+    borderColor: vi.fn((feedId: string) => (feedId === "work" ? opts.borderColor : undefined)),
   };
   return svc as unknown as CalendarService & { poll: ReturnType<typeof vi.fn> };
 }
@@ -369,6 +371,32 @@ describe("NextMeetingAction — per-key render clock (contract #2)", () => {
 
     vi.advanceTimersByTime(5_000);
     expect(key.setImage.mock.calls.length).toBe(paintedWhileAppeared); // no orphan repaints
+  });
+
+  it("threads the feed's resolved border color into the painted image (#78)", () => {
+    // Decode the base64 data: URI of the first setImage call back to SVG markup.
+    // The fake types setImage with 0 args, so cast the call tuple to read arg 0.
+    const firstImage = (key: ReturnType<typeof fakeKey>): string => {
+      const uri = String((key.setImage.mock.calls.at(0) as unknown[] | undefined)?.[0]);
+      return Buffer.from(uri.replace(/^data:image\/svg\+xml;base64,/, ""), "base64").toString(
+        "utf8",
+      );
+    };
+
+    const bordered = fakeService({ snapshot: imminentSnapshot(), borderColor: "#14c8b0" });
+    const key = fakeKey("k1");
+    const action = new NextMeetingAction("uuid", bordered);
+    action.onWillAppear(appearEv(key, { feedId: "work", offset: 0 }));
+    expect(firstImage(key)).toContain('stroke="#14c8b0"');
+    action.onWillDisappear(disappearEv(key));
+
+    // A feed with no color paints no border — today's exact look.
+    const bare = fakeService({ snapshot: imminentSnapshot() });
+    const key2 = fakeKey("k2");
+    const action2 = new NextMeetingAction("uuid", bare);
+    action2.onWillAppear(appearEv(key2, { feedId: "work", offset: 0 }));
+    expect(firstImage(key2)).not.toContain("stroke=");
+    action2.onWillDisappear(disappearEv(key2));
   });
 
   it("re-derives the render clock on a settings change without stacking timers", () => {

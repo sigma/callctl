@@ -10,6 +10,8 @@
  * `parse*` helpers coerce and default defensively rather than trusting the shape.
  */
 
+import { isPaletteToken, type PaletteToken } from "./calendar/palette.js";
+
 /** Chromium-family browser a feed can target for profile-specific opens (§3, #51). */
 export type BrowserId = "chrome" | "chromium" | "edge" | "brave";
 
@@ -27,6 +29,13 @@ export interface NamedFeed {
     /** Literal `--profile-directory` folder name, e.g. `"Profile 1"`. */
     profile: string;
   };
+  /**
+   * Optional per-feed border color, one of the 10 palette tokens (#78). Absent ⇒
+   * no border (today's exact look). Stored as a token, never raw hex, so the
+   * palette can be re-tuned without migrating settings; resolved to hex by
+   * {@link resolvePaletteColor} at render time.
+   */
+  color?: PaletteToken;
 }
 
 /** Plugin-wide settings (§3). */
@@ -78,6 +87,9 @@ function parseFeed(raw: unknown): NamedFeed | undefined {
   // A feed with no id or no url can never be referenced/fetched — drop it.
   if (id === "" || url === "") return undefined;
   const feed: NamedFeed = { id, name: str(raw.name), url };
+  // Border color: keep only a known palette token; an absent, empty, or unknown
+  // value leaves `color` off (⇒ no border), never trusting the stored shape.
+  if (isPaletteToken(raw.color)) feed.color = raw.color;
   if (isRecord(raw.open)) {
     const browser = raw.open.browser;
     const profile = str(raw.open.profile);

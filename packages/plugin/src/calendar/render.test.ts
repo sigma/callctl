@@ -101,6 +101,33 @@ describe("renderFaceSvg (§8)", () => {
     expect(off).toContain("+00:05");
   });
 
+  it("draws no border when no feed color is given (today's exact look)", () => {
+    for (const face of [
+      countdown(),
+      { kind: "active", title: "Sync", time: "29:00" },
+      { kind: "free", hint: null },
+      { kind: "error" },
+      { kind: "loading" },
+    ] satisfies KeyFace[]) {
+      expect(renderFaceSvg(face)).not.toContain("stroke=");
+    }
+  });
+
+  it("paints the per-feed border on every feed-resolved face incl. flash & in-call (#78)", () => {
+    const hasBorder = (face: KeyFace) =>
+      /<rect[^>]*fill="none"[^>]*stroke="#14c8b0"/.test(renderFaceSvg(face, "#14c8b0"));
+    expect(hasBorder(countdown())).toBe(true);
+    expect(hasBorder(countdown({ escalation: "late", blinkOff: true, time: "+00:03" }))).toBe(true);
+    expect(hasBorder({ kind: "active", title: "Sync", time: "29:00" })).toBe(true);
+    expect(hasBorder({ kind: "free", hint: null })).toBe(true);
+    expect(hasBorder({ kind: "error" })).toBe(true);
+    expect(hasBorder({ kind: "loading" })).toBe(true);
+  });
+
+  it("never borders the unconfigured face — it has no feed (#78)", () => {
+    expect(renderFaceSvg({ kind: "unconfigured" }, "#14c8b0")).not.toContain("stroke=");
+  });
+
   it("renders overdue as steady red on the dark field — no flash, no blink (§10)", () => {
     const timeFill = (s: string) => s.match(/font-size="40"[^>]*fill="(#[0-9a-f]{6})"/)?.[1];
     // blinkOff is never set for overdue (isBlinkOff returns false), but even so
