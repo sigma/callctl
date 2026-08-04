@@ -6,10 +6,17 @@
     nixpkgs.follows = "nix-pins/nixpkgs";
     toolbox.url = "github:firefly-engineering/toolbox";
     toolbox.inputs.nix-pins.follows = "nix-pins";
+
+    # Pinned Google Noto Color Emoji vector sources (per-glyph SVGs under svg/).
+    # Consumed by the reaction-icon generator; see packages/plugin/scripts.
+    noto-emoji = {
+      url = "github:googlefonts/noto-emoji";
+      flake = false;
+    };
   };
 
   outputs =
-    { nixpkgs, toolbox, ... }:
+    { nixpkgs, toolbox, noto-emoji, ... }:
     let
       systems = [
         "x86_64-linux"
@@ -45,6 +52,22 @@
               (tool "typescript-toolchain")
               (tool "just")
             ];
+          };
+
+          # Dedicated shell for the reaction-icon generator
+          # (packages/plugin/scripts/gen-react-icons.ts), kept separate so the
+          # default shell stays lean: this one pulls the heavy pinned noto-emoji
+          # source plus the rasterizers. Used by `just gen-react-icons`.
+          icon-gen = pkgs.mkShell {
+            packages = [
+              (tool "typescript-toolchain") # bun, to run the generator
+              pkgs.resvg # rasterize the Noto SVGs
+              pkgs.imagemagick # trim / scale / center onto the tile
+            ];
+
+            # Pinned Noto Color Emoji SVG source dir, so the generator renders
+            # from a locked revision instead of the network.
+            NOTO_EMOJI_SVG = "${noto-emoji}/svg";
           };
         }
       );

@@ -22,6 +22,12 @@ build:
 clean:
     rm -rf packages/*/dist packages/plugin/*.sdPlugin/bin
 
+# Regenerate the 9 reaction icons from pinned Noto Color Emoji (18 PNGs).
+# Uses the dedicated `icon-gen` devShell (resvg + imagemagick + noto-emoji src),
+# so it works even from the lean default shell / bare `just`.
+gen-react-icons:
+    nix develop 'path:.#icon-gen' --command bun packages/plugin/scripts/gen-react-icons.ts
+
 # --- Plugin (terminal 1) -----------------------------------------------------
 
 # Watch + hot-reload the Stream Deck plugin (rebuild + restart on save)

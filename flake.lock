@@ -549,6 +549,22 @@
         "type": "github"
       }
     },
+    "noto-emoji": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1757707640,
+        "narHash": "sha256-qngf8t5fLYAOtO2GMhbMv7I34RO/eYfNawW+Th/uaYQ=",
+        "owner": "googlefonts",
+        "repo": "noto-emoji",
+        "rev": "8998f5dd683424a73e2314a8c1f1e359c19e8742",
+        "type": "github"
+      },
+      "original": {
+        "owner": "googlefonts",
+        "repo": "noto-emoji",
+        "type": "github"
+      }
+    },
     "pre-commit-hooks-nix": {
       "inputs": {
         "flake-compat": [
@@ -582,6 +598,7 @@
           "nix-pins",
           "nixpkgs"
         ],
+        "noto-emoji": "noto-emoji",
         "toolbox": "toolbox"
       }
     },
