@@ -16,6 +16,9 @@ const CAL = (...body: string[]) =>
     "\r\n",
   );
 
+/** The same calendar with an owner address in `X-WR-CALNAME` (the §5.1 inference source). */
+const CAL_NAMED = (calName: string, ...body: string[]) => CAL(`X-WR-CALNAME:${calName}`, ...body);
+
 // A fixed reference instant; the events sit just after it and well within the
 // engine's ~400-day expansion horizon, so selection keeps them deterministically.
 const NOW = new Date(Date.UTC(2099, 0, 1, 9, 0, 0));
@@ -51,6 +54,7 @@ describe("testFeed — success (§11)", () => {
       events: 1,
       joinable: 1,
       next: { title: "Standup", startMs: MEET_START_MS },
+      identity: { source: "none", addresses: [] },
     });
   });
 
@@ -64,13 +68,109 @@ describe("testFeed — success (§11)", () => {
   it("a valid but empty calendar is reachable with no events", async () => {
     const impl = fakeFetch(new Response(CAL(), { status: 200 }));
     const r = await testFeed(SECRET, { fetchImpl: impl, now: NOW });
-    expect(r).toEqual({ ok: true, events: 0, joinable: 0, next: null });
+    expect(r).toEqual({
+      ok: true,
+      events: 0,
+      joinable: 0,
+      next: null,
+      identity: { source: "none", addresses: [] },
+    });
   });
 
   it("events present but none joinable → next is null", async () => {
     const impl = fakeFetch(new Response(CAL(...LINKLESS_EVENT), { status: 200 }));
     const r = await testFeed(SECRET, { fetchImpl: impl, now: NOW });
-    expect(r).toEqual({ ok: true, events: 1, joinable: 0, next: null });
+    expect(r).toEqual({
+      ok: true,
+      events: 1,
+      joinable: 0,
+      next: null,
+      identity: { source: "none", addresses: [] },
+    });
+  });
+});
+
+describe("testFeed — the identity in effect and where it came from (§5.1/§11)", () => {
+  it("reports the configured identities, canonicalized as a poll would resolve them", async () => {
+    const impl = fakeFetch(new Response(CAL_NAMED("owner@example.com", ...MEET_EVENT)));
+    const r = await testFeed(SECRET, {
+      fetchImpl: impl,
+      now: NOW,
+      identities: ["mailto:Me@Example.com", " alias@example.com "],
+    });
+    expect(r).toMatchObject({
+      ok: true,
+      identity: { source: "configured", addresses: ["alias@example.com", "me@example.com"] },
+    });
+  });
+
+  it("configured wins outright — the feed's own X-WR-CALNAME never unions in", async () => {
+    const impl = fakeFetch(new Response(CAL_NAMED("owner@example.com", ...MEET_EVENT)));
+    const r = await testFeed(SECRET, { fetchImpl: impl, now: NOW, identities: ["me@example.com"] });
+    expect(JSON.stringify(r)).not.toContain("owner@example.com");
+  });
+
+  it("infers from an email-shaped X-WR-CALNAME and names the address", async () => {
+    const impl = fakeFetch(new Response(CAL_NAMED("owner@example.com", ...MEET_EVENT)));
+    const r = await testFeed(SECRET, { fetchImpl: impl, now: NOW });
+    expect(r).toMatchObject({
+      ok: true,
+      identity: { source: "inferred", addresses: ["owner@example.com"] },
+    });
+  });
+
+  it("a display-name X-WR-CALNAME is not an address → none", async () => {
+    const impl = fakeFetch(new Response(CAL_NAMED("Arbora Team", ...MEET_EVENT)));
+    const r = await testFeed(SECRET, { fetchImpl: impl, now: NOW });
+    expect(r).toMatchObject({ ok: true, identity: { source: "none", addresses: [] } });
+  });
+
+  it("an all-blank configured list falls through to inference", async () => {
+    const impl = fakeFetch(new Response(CAL_NAMED("owner@example.com", ...MEET_EVENT)));
+    const r = await testFeed(SECRET, { fetchImpl: impl, now: NOW, identities: ["  ", ""] });
+    expect(r).toMatchObject({ identity: { source: "inferred", addresses: ["owner@example.com"] } });
+  });
+
+  it("a 304 with no body reports unknown, not a none it never looked for", async () => {
+    const impl = fakeFetch(new Response(null, { status: 304 }));
+    const r = await testFeed(SECRET, { fetchImpl: impl, now: NOW });
+    expect(r).toMatchObject({ ok: true, identity: { source: "unknown", addresses: [] } });
+  });
+
+  it("a 304 still reports a configured identity — it stands without a body", async () => {
+    const impl = fakeFetch(new Response(null, { status: 304 }));
+    const r = await testFeed(SECRET, { fetchImpl: impl, now: NOW, identities: ["me@example.com"] });
+    expect(r).toMatchObject({
+      ok: true,
+      identity: { source: "configured", addresses: ["me@example.com"] },
+    });
+  });
+
+  it("the counts stay identity-independent — §5.1 marks, it never drops", async () => {
+    const declined = [
+      "BEGIN:VEVENT",
+      "UID:evt-3",
+      "DTSTART:20990101T100000Z",
+      "DTEND:20990101T110000Z",
+      "SUMMARY:Standup",
+      "X-GOOGLE-CONFERENCE:https://meet.google.com/abc-defg-hij",
+      "ATTENDEE;PARTSTAT=DECLINED:mailto:me@example.com",
+      "END:VEVENT",
+    ];
+    const body = CAL(...declined);
+    const mine = await testFeed(SECRET, {
+      fetchImpl: fakeFetch(new Response(body)),
+      now: NOW,
+      identities: ["me@example.com"],
+    });
+    const theirs = await testFeed(SECRET, {
+      fetchImpl: fakeFetch(new Response(body)),
+      now: NOW,
+      identities: ["someone-else@example.com"],
+    });
+    // §5.1 marks, it never drops: the instance is still joinable either way.
+    expect(mine).toMatchObject({ ok: true, joinable: 1 });
+    expect(theirs).toMatchObject({ ok: true, joinable: 1 });
   });
 });
 
@@ -121,6 +221,13 @@ describe("testFeed — the feed URL (secret) never leaks into the verdict (§12)
     expect(JSON.stringify(r)).not.toContain("SECRET");
     expect(JSON.stringify(r)).not.toContain("calendar.example.com");
   });
+
+  it("a success verdict carrying an identity still carries no URL", async () => {
+    const impl = fakeFetch(new Response(CAL_NAMED("owner@example.com", ...MEET_EVENT)));
+    const r = await testFeed(SECRET, { fetchImpl: impl, now: NOW, identities: ["me@example.com"] });
+    expect(JSON.stringify(r)).not.toContain("SECRET");
+    expect(JSON.stringify(r)).not.toContain("calendar.example.com");
+  });
 });
 
 describe("handlePiTestMessage — PI [Test] round-trip envelope (§11)", () => {
@@ -138,6 +245,7 @@ describe("handlePiTestMessage — PI [Test] round-trip envelope (§11)", () => {
         events: 1,
         joinable: 1,
         next: { title: "Standup", startMs: MEET_START_MS },
+        identity: { source: "none", addresses: [] },
       },
     });
   });
@@ -159,5 +267,38 @@ describe("handlePiTestMessage — PI [Test] round-trip envelope (§11)", () => {
     expect(await handlePiTestMessage({ command: "testFeed", url: 42 }, opts)).toBeNull();
     expect(await handlePiTestMessage(null, opts)).toBeNull();
     expect(await handlePiTestMessage("nope", opts)).toBeNull();
+  });
+
+  it("forwards a well-formed identities list to the verdict", async () => {
+    const impl = fakeFetch(new Response(CAL_NAMED("owner@example.com", ...MEET_EVENT)));
+    const reply = await handlePiTestMessage(
+      { command: "testFeed", requestId: "r-2", url: SECRET, identities: ["Me@example.com"] },
+      { fetchImpl: impl, now: NOW },
+    );
+    expect(reply).toMatchObject({
+      result: { identity: { source: "configured", addresses: ["me@example.com"] } },
+    });
+  });
+
+  it("an absent identities field is fine — the feed still resolves by inference", async () => {
+    const impl = fakeFetch(new Response(CAL_NAMED("owner@example.com", ...MEET_EVENT)));
+    const reply = await handlePiTestMessage(
+      { command: "testFeed", url: SECRET },
+      { fetchImpl: impl, now: NOW },
+    );
+    expect(reply).toMatchObject({
+      result: { identity: { source: "inferred", addresses: ["owner@example.com"] } },
+    });
+  });
+
+  it("rejects a malformed identities field without touching the network", async () => {
+    const impl = fakeFetch(new Response(CAL(...MEET_EVENT)));
+    const opts = { fetchImpl: impl, now: NOW };
+    const base = { command: "testFeed", requestId: "r-3", url: SECRET };
+    expect(await handlePiTestMessage({ ...base, identities: "me@example.com" }, opts)).toBeNull();
+    expect(await handlePiTestMessage({ ...base, identities: [42] }, opts)).toBeNull();
+    expect(await handlePiTestMessage({ ...base, identities: [{}] }, opts)).toBeNull();
+    expect(await handlePiTestMessage({ ...base, identities: null }, opts)).toBeNull();
+    expect(impl).not.toHaveBeenCalled();
   });
 });

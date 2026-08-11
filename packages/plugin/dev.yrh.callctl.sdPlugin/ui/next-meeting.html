@@ -258,6 +258,14 @@
           <label>Color</label>
           <div class="f-colors swatches"></div>
         </div>
+        <div class="line">
+          <label>My address(es)</label>
+          <input class="f-identities" type="text" placeholder="you@example.com, alias@example.com" />
+        </div>
+        <div class="hint">
+          Used only to spot meetings <strong>you</strong> declined. Leave blank to auto-detect from
+          the feed.
+        </div>
         <div class="line open-controls">
           <label>Open in</label>
           <select class="f-browser">
@@ -459,9 +467,11 @@
         const colorsEl = $(".f-colors", node);
         const browserEl = $(".f-browser", node);
         const profileEl = $(".f-profile", node);
+        const identitiesEl = $(".f-identities", node);
 
         nameEl.value = feed.name || "";
         urlEl.value = feed.url || "";
+        identitiesEl.value = Array.isArray(feed.identities) ? feed.identities.join(", ") : "";
         renderSwatches(colorsEl, feed);
         browserEl.value = feed.open ? feed.open.browser : "";
         profileEl.value = feed.open ? feed.open.profile : "";
@@ -510,6 +520,17 @@
         browserEl.addEventListener("change", persistOpen);
         profileEl.addEventListener("change", persistOpen);
 
+        // Comma-separated in, `string[]` out (§3/§5.1). An empty list is stored as
+        // no field at all — the plugin reads absent and empty identically (the
+        // §5.1 inference), and one spelling of "unset" beats two.
+        identitiesEl.addEventListener("change", () => {
+          const list = splitIdentities(identitiesEl.value);
+          if (list.length > 0) feed.identities = list;
+          else delete feed.identities;
+          identitiesEl.value = list.join(", "); // reflect the trimming back
+          commitGlobal();
+        });
+
         testEl.addEventListener("click", () => runTest(feed, statusEl));
         removeEl.addEventListener("click", () => {
           global.feeds = global.feeds.filter((f) => f !== feed);
@@ -533,6 +554,16 @@
         commitGlobal();
       });
 
+      // ── Identity field (§5.1) ───────────────────────────────────────────
+      // One comma-separated text field ⇄ `identities: string[]`. Not a secret:
+      // no masking, no reveal toggle (unlike the URL, §12).
+      function splitIdentities(raw) {
+        return String(raw || "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s !== "");
+      }
+
       // ── [Test] round-trip (§11) ─────────────────────────────────────────
       function runTest(feed, statusEl) {
         const norm = normalizeFeedUrl(feed.url);
@@ -545,7 +576,11 @@
         pendingTests.set(requestId, statusEl);
         statusEl.className = "msg muted f-status";
         statusEl.textContent = "Testing…";
-        sendToPlugin({ command: "testFeed", requestId, url: norm.url });
+        const payload = { command: "testFeed", requestId, url: norm.url };
+        // Send the field only when there is one — absent is the same "unset" the
+        // stored feed uses, and the plugin resolves both the same way.
+        if (Array.isArray(feed.identities)) payload.identities = feed.identities;
+        sendToPlugin(payload);
       }
 
       function renderTestResult(requestId, result) {
@@ -561,10 +596,28 @@
             parts.push(`next joinable: “${title}” at ${when}`);
           }
           statusEl.className = "msg ok f-status";
-          statusEl.textContent = `✓ ${parts.join("; ")}.`;
+          statusEl.textContent = `✓ ${parts.join("; ")}. ${identityLine(result.identity)}`;
         } else {
           statusEl.className = "msg err f-status";
           statusEl.textContent = `✗ ${describeError(result)}`;
+        }
+      }
+
+      // The identity line of the report (§5.1/§11) — the only place the resolved
+      // identity is ever shown, so it names the addresses *and* where they came
+      // from. `none` is a working feed, not an error: it just never applies the
+      // declined half, and the line says so in words rather than in red.
+      function identityLine(identity) {
+        const addresses = (identity && identity.addresses) || [];
+        switch (identity && identity.source) {
+          case "configured":
+            return `You: ${addresses.join(", ")} (configured).`;
+          case "inferred":
+            return `You: ${addresses.join(", ")} (auto-detected from the feed).`;
+          case "unknown":
+            return "You: couldn’t be checked (the feed sent no data).";
+          default:
+            return "You: not set — declined meetings won’t be spotted.";
         }
       }
 
