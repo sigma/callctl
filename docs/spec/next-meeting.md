@@ -3,6 +3,8 @@
 **Status:** implementable handoff spec — ready to build.
 **Origin:** wayfinder map [Map: Next-meeting deck button](https://github.com/sigma/callctl/issues/35) (#35). This document is the synthesis deliverable of [Assemble the final Next-Meeting handoff spec](https://github.com/sigma/callctl/issues/53) (#53). It stitches together already-made decisions (#36–#52); it does **not** introduce new ones. Every non-trivial claim traces back to a closed ticket — see [§13 Traceability](#13-traceability).
 
+**Amended** by wayfinder map [Map: Which calendar events earn a next-meeting key](https://github.com/sigma/callctl/issues/87) (#87) with the **attendance & cancellation policy** (§5.1), which touches §3, §4, §5, §8, §9, §10 and §11. Same rule: it records decisions closed on that map (#88–#93), it does not introduce new ones.
+
 ---
 
 ## 1. Overview
@@ -76,6 +78,7 @@ interface NamedFeed {
   id: string;                    // stable generated slug/uuid — survives renames
   name: string;                  // human label shown in the per-key dropdown
   url: string;                   // secret capability URL, stored PLAINTEXT (see §12)
+  identities?: string[];         // subscriber's own address(es) for the §5.1 declined rule (#90)
   open?: {                       // optional per-feed browser-profile targeting (#51)
     browser: "chrome" | "chromium" | "edge" | "brave";
     profile: string;             // literal --profile-directory folder name, e.g. "Profile 1"
@@ -85,6 +88,7 @@ interface NamedFeed {
 
 - **The secret lives only in `GlobalSettings.feeds[].url`.** Global settings are excluded from `.streamDeckProfile` exports, so the secret never rides along in a shared profile.
 - `id` is a stable generated slug so renaming a feed does not break per-key references.
+- **`identities` is per-feed, never global** (§5.1): a feed *is* an account, so one global identity would be wrong — silently, matching nobody — the moment a second account's feed is added. There is no override chain. It is a `string[]` because aliases are real (an invite to an alias lands on the same calendar with the alias as `ATTENDEE`) and because widening `string` → `string[]` later would need a settings migration. Absent/empty ⇒ the §5.1 inference, then a no-op. It rides in **global** settings with the rest of the feed, so it also stays out of profile exports.
 
 ### Per-key action settings
 
@@ -120,6 +124,15 @@ Fetch is done by hand (not `node-ical`'s `fromURL`) to control caching, rewritin
 - `200` → re-parse and **atomically swap** the in-memory event set.
 - If the server offers no validator, fall back to a plain full `GET` each poll + re-parse.
 
+### Invalidation on config change — `setUrl` nukes, `setIdentities` does not
+
+The cache holds the **post-selection** list, so any config change that alters *selection* must invalidate something — otherwise a `304` keeps the stale filtered list alive indefinitely. The two changes invalidate at **different strengths**, deliberately:
+
+- **`setUrl`** (changed feed URL) drops **everything** — validators, list, `everLoaded` — and returns the feed to `loading`. A different secret means a *different calendar*: the cached data is simply wrong.
+- **`setIdentities`** (changed §5.1 identity list) drops **only the validators**, leaving the list and `status: "ok"` intact. The next poll is then forced to be a real `200` re-fetch and re-select, while the key keeps rendering the previous list until it lands — *same data, different filter*, so there is no reason to flash a cold-start face for a filter tweak.
+
+The contrast is load-bearing and belongs in a comment at the call site. (Caching the raw feed text so a re-select needs no fetch would be more responsive, but keeping the calendar body resident is a §12 posture change not worth making for a rare edit.)
+
 ---
 
 ## 5. Parse, recurrence & selection
@@ -140,9 +153,11 @@ Fetch is done by hand (not `node-ical`'s `fromURL`) to control caching, rewritin
 The engine returns an **ordered list** of upcoming, still-relevant, **link-bearing** event instances (not a single event) — a key selects one by its `offset`.
 
 1. Expand recurrences over the horizon.
-2. Filter to instances that yield a join candidate (extraction, §6 — tiers (a) and (b) both count as "has a link"; tier (c) is excluded).
+2. Synthesize `end = start + 30 min` where `DTEND` is absent.
 3. Keep instances whose `end > now`.
-4. **Sort:** `start` ascending → then `end` ascending → then `uid`. Full stable sort. (Example: `2:00–2:30` precedes `2:00–3:00`.)
+4. Filter to instances that yield a join candidate (extraction, §6 — tiers (a) and (b) both count as "has a link"; tier (c) is excluded).
+5. **Mark** each surviving instance with the §5.1 attendance verdict — `attending: false` for a cancelled or declined occurrence, `true` otherwise. This step **marks, it does not drop**: the actual drop lives downstream in §10's `applyDismissal`, so a meeting you declined and then joined anyway can be rescued (§5.1).
+6. **Sort:** `start` ascending → then `end` ascending → then `uid`. Full stable sort. (Example: `2:00–2:30` precedes `2:00–3:00`.)
 
 Per-instance shape:
 
@@ -154,10 +169,68 @@ interface MeetingInstance {
   title: string;
   sourceFeedId: string;
   candidate: JoinCandidate;      // §6 — tier (a) or (b)
+  attending: boolean;            // §5.1 verdict; false ⇒ dropped by §10 dismissal unless held
 }
 ```
 
 The key at `offset N` renders the Nth element of this list (0-indexed). Fewer than `N+1` events in scope today → that key shows "Free" (§8).
+
+### 5.1 Attendance & cancellation policy — which events earn a key
+
+*(Amendment from map #87. Motivation: a meeting you **declined** would hold slot 0 and hard-flash red at its start time — working exactly as designed, because nothing in the pipeline ever looked at attendance, and because the spec never said it should. The key's job is *what am I about to walk into*; a declined event holding slot 0 hides the meeting you actually have.)*
+
+#### The verdict — allow by default, drop on exactly two conditions
+
+Evaluated at poll time (step 5 above) against the **expanded occurrence**, never the master `VEVENT`. This is not a detail: a cancelled or declined single occurrence of an otherwise-fine series arrives as a `RECURRENCE-ID` override carrying its **own** `STATUS`/`PARTSTAT`, and filtering the master would silently no-op. `node-ical`'s `expandRecurringEvent` carries the override's own properties onto `occ.event`, which is already what the extractor is handed.
+
+`attending` is `false` when **either** holds:
+
+1. **`STATUS` equals `CANCELLED`** (case-insensitive). **Unconditional** — the organizer's voice needs no identity to hear, so even an unconfigured feed gets this half for free.
+2. **Some `ATTENDEE` whose address matches a resolved identity carries `PARTSTAT` exactly `DECLINED`** (case-insensitive).
+
+Everything else is **kept** — this is allow-by-default, and it is also the free implementation shape: RFC 5545 §3.2.12 makes `PARTSTAT` default to `NEEDS-ACTION` and requires unrecognized values be *read as* `NEEDS-ACTION`. So all of these are attending:
+
+- **No `ATTENDEE` property at all.** The RFCs say a `PUBLISH` feed MUST NOT carry `ATTENDEE`; providers violate this routinely, and the escape hatch is that a feed with no `METHOD` is "merely a snapshot" (RFC 5545 §3.7.2). Absence can never mean "not attending".
+- **`PARTSTAT` absent, unrecognized, or `DELEGATED`.**
+- **`PARTSTAT=TENTATIVE` and `PARTSTAT=NEEDS-ACTION`.** Deliberate, and **not to be "fixed" back**: the failure modes are asymmetric — an unwanted flash is annoying, a silently-hidden meeting is harm. A per-state escalation matrix is likewise deliberately avoided.
+- **`STATUS:TENTATIVE`.** `STATUS` is the *organizer's* voice and `PARTSTAT` the *attendee's*; the organizer's uncertainty is not your decline. Only `CANCELLED` drops.
+
+Implementation notes that are easy to get wrong: `attendee` is **object-or-array** on `node-ical` (a bare object when there is exactly one) and **every** entry must be scanned — §6.1's first-element `readProp` convention does not carry over. `ParsedEvent` (`types.ts`) widens to declare `attendee` and `status`; no new extraction layer is needed.
+
+#### Identifying the subscriber — and the degradation path
+
+**No feed-intrinsic owner identity exists.** RFC 5545 defines no VCALENDAR owner property; RFC 7986's ten new calendar-level properties include none; RFC 5546 has no notion of "recipient of this feed"; Google's API has exactly the right flag (`attendees[].self`) with no iCalendar counterpart. A live Google feed confirmed it empirically: the subscriber's decline is an ordinary `ATTENDEE;PARTSTAT=DECLINED` line among 13 others, with `ORGANIZER` a robot address. **Configured identity is therefore the only approach correct by construction** — treating *any* `PARTSTAT=DECLINED` as yours would drop a meeting because someone else declined it.
+
+Resolution order, per feed, per poll:
+
+1. **Configured `NamedFeed.identities`** (§3) when non-empty. **Explicit wins outright** — inference never unions in, or a bad inference would be impossible to switch off.
+2. **Inferred from the VCALENDAR-level `X-WR-CALNAME`** when present and **email-shaped**. On a primary Google calendar this is the owner's address, so the common case needs no setup at all. The shape test is a loose structural check — exactly one `@`, both sides non-empty, a dot in the domain — not an RFC 5322 regex; its only job is to reject display names like `Arbora Team`. Under `node-ical` this surfaces as **`parsed.vcalendar["WR-CALNAME"]`** (`X-` de-prefixing preserves case), reachable because selection receives the whole `CalendarResponse`. Inference is **ephemeral**: recomputed each poll, never written back to settings — a background poll writing user settings is surprising and races the PI editor.
+3. **Neither ⇒ pure no-op.** The declined half simply never fires and the feed behaves exactly as it does today.
+
+**The degradation path matters as much as the happy one: an unidentifiable feed fails toward *showing* the meeting, never hiding it.** Degrading it to the §8 setup prompt would be a regression for users who never cared about declines, and the feed is fully functional at its actual job (countdown, join) without an identity. Note again that the **cancelled** half is ungated and keeps working.
+
+**Matching** compares each `ATTENDEE`'s **`val`** with the `mailto:` scheme stripped, case-insensitively, against any resolved address. **Never `CN`** — `CN` equalled the email only coincidentally on the Workspace feed observed; it is a display name.
+
+**Accepted risk of inference.** It is correct on a primary calendar and inert on a secondary/group one (a group address appears as an `ATTENDEE` with `PARTSTAT=ACCEPTED`, so the rule never fires). The one harmful case is a feed **subscribed to another person's calendar**, where `X-WR-CALNAME` is *their* address and an event *they* declined drops off your key. Narrow, with the escape hatch one field away — and refusing to infer would cost every ordinary user the feature.
+
+#### Explicit non-rule: time transparency is never consulted
+
+**`TRANSP:TRANSPARENT` events are kept.** No filter, no escalation carve-out — the pipeline stays blind to `TRANSP`. Recorded here so it is not re-proposed later as an obvious oversight:
+
+- `TRANSP` is a **free/busy** signal, not an attendance one (RFC 5545 §3.8.2.7 — both its clauses are `SHOULD`, so it is advisory even on its own terms). This policy is built out of exactly two voices, the organizer's (`STATUS`) and the attendee's (`PARTSTAT`); `TRANSP` is neither.
+- Transparency's natural population — all-day birthdays, holidays, informational blocks — carries no join link, so **§6 tier (c) already drops it for free**. The residue is *link-bearing but transparent* events, whose most plausible member is a **real call marked "Free" to keep availability open**. Dropping that is a silently-hidden meeting: the harm side of the same asymmetry that keeps `TENTATIVE`/`NEEDS-ACTION`.
+- Keep-but-never-escalate was rejected on cost: it is precisely the per-state escalation matrix this policy avoids, buying a second mechanism to govern a population never observed in the field.
+- The default is `OPAQUE`, so feeds that never emit `TRANSP` were unaffected either way. If a transparent event ever does hijack slot 0 in practice, that is a fresh ticket with real evidence behind it.
+
+Microsoft's `X-MICROSOFT-CDO-BUSYSTATUS` (`FREE`/`TENTATIVE`/`BUSY`/`OOF`) is **out of scope** (§14) — strictly richer than the RFC's binary and able to disagree with it, but a vendor-specific rung in an otherwise pure RFC 5545 policy, with no Outlook feed to observe.
+
+#### Where the drop happens, and what it does to `offset`
+
+The **verdict** is computed at poll time (above); the **drop** is one clause in §10's `applyDismissal` — *drop `!attending` unless held*. That split is what makes a declined-then-joined meeting recoverable (§10), and it costs nothing structurally: `applyDismissal` is already a render-clock pre-filter that `offset` indexes the output of.
+
+**`offset` semantics are unchanged** (§3, §9). Attendance changes *what is in the list*, not what the index means — structurally identical to a tier-(c) linkless event or to a meeting that has ended. Concretely: decline the 2pm and the `offset 0` key jumps to the 3pm while `offset 1` shows the 4pm. **The pair shifts as a unit — no hole, no placeholder**, exactly as it already does at every meeting boundary.
+
+> **Footnote on the drop stage.** An earlier form of this decision put the drop itself in `selectMeetings`, reasoning that a downstream drop would create "two different notions of the list". That rationale was retired: `applyDismissal` *is* such a stage already, sanctioned by §9/§10, and `offset` already indexes its output. Only the drop stage moved — the poll-time, expanded-occurrence **verdict** (the part that makes `RECURRENCE-ID` overrides correct) and the `offset` semantics both stand exactly as written.
 
 ### Display horizon = a configurable duration (default 24h)
 
@@ -307,6 +380,8 @@ Non-countdown states:
 
 At `DTEND` the boundary logic (§9) advances the selection, the one and only advance.
 
+**A non-attending meeting has no escalation states at all.** An instance marked `attending: false` (§5.1) is dropped by dismissal before any face is computed, so it never reaches `normal`/`approaching`/`imminent`/`late`/`overdue` — this is the whole point of the amendment. The single door back in is being **held** (§10), and held *is* the in-call state, so a rescued declined or cancelled meeting can only ever render as calm teal. **The original bug — a declined meeting hard-flashing red — cannot recur through that door.**
+
 ---
 
 ## 9. Polling cadence, freshness & boundaries
@@ -327,7 +402,7 @@ A fixed 500 ms local timer does pure arithmetic (`now` vs the cached event set):
 
 ### Meeting-boundary behavior
 
-- The current event stays current until its scheduled `end` (§5 sort governs ordering; `end > now` governs currency) — **the only advance**. Nothing is dropped for being late.
+- The current event stays current until its scheduled `end` (§5 sort governs ordering; `end > now` governs currency) — **the only advance**. Nothing is dropped for being late. (An instance marked `attending: false` is dropped by dismissal, §10 — a *filter*, not an advance: it was never eligible to be current.)
 - Past `start` → late flash `+MM:SS`, calming to steady `overdue` at `start + 5 min` (the fixed grace window, §8, §10); at `end` → advance to the next list element.
 - **Join holds, it does not advance:** a §10 in-call signal swaps the red state for the in-call countdown to `DTEND`, keeping the meeting current and durably held (survives leaving) until `DTEND` — the same boundary as every other meeting.
 
@@ -367,6 +442,19 @@ The Leave button renders only once admitted and in the call — this avoids fals
 - **Started-occurrence match:** a recurring meeting shares one code across occurrences, so the live match is restricted to an occurrence that has already started (`start ≤ now`) — the one you are actually in. Pairing the code with the occurrence start in the identity keeps a join from ever holding a *future* occurrence of the same series.
 - **Skip-ahead:** the held set is checked against **all tracked near-term events**. If you skip event N and join N+1 directly, the non-held events *before* the held one are dropped so the key advances to the event you are in — which then holds until its own end.
 
+### Dismissal drops non-attending events — unless you are demonstrably in them
+
+The §5.1 attendance verdict is *applied* here, as one clause in the same dismissal pre-filter: **drop `attending: false` unless held.**
+
+This is what rescues a meeting you declined (or that the organizer cancelled) and then joined anyway — exactly what a low-stakes recurring standup invites. Everything it needs already exists:
+
+- The live-join fold runs on the **pre-dismissal** list on both call paths (render and press), so a non-attending instance still reaches it and its identity enters the held set by the ordinary path. **No new plumbing, and no coupling of selection to live join state** — the rescue rides on the durable held set, not on the live signal.
+- The hold is therefore **durable**: it survives leaving the call, so the meeting does not vanish mid-way and flip the key to "Free".
+- Skip-ahead already drops the non-held events before it, so the rescued call lands at `offset 0` where it belongs.
+- The rescue covers **`STATUS:CANCELLED` on the same clause** as `PARTSTAT=DECLINED`. Its trigger is *you are demonstrably in this call*, which is the strongest evidence available and outranks both the organizer's voice and your own earlier RSVP; restricting it to declined would mean writing an extra condition whose only job is to ignore proof.
+
+> **Known limitation — tier-(b) events can never be rescued.** No canonical code ⇒ no `joinIdentity` ⇒ no join detection (§6.3, and the identity construction above). A declined Zoom-by-description meeting stays hidden however loudly you join it. This is true under every design considered, not a defect of this one — **do not file it as a bug.**
+
 ### The fallback — always active, primary path
 
 Because the extension is optional, a **time-based fallback is primary and always on** — but it governs only the **flash**, not whether the meeting shows:
@@ -395,7 +483,9 @@ The plugin's first Property Inspector — one HTML file, present on every Next-M
    - The **URL** field is **masked with a 👁 reveal toggle**.
    - On entry, **validate the scheme**, **rewrite `webcal://` → `https://`**, and reject non-`http(s)`.
    - Optional **`Open in:` `[browser ▾] [profile]`** controls (the per-feed `open`); empty ⇒ default `openUrl`. Help text points at `chrome://version` for the profile folder name.
+   - Optional **`My address(es):`** — a single **comma-separated** text field writing the per-feed `identities: string[]` (§3, §5.1). Help text: *"Used only to spot meetings **you** declined. Leave blank to auto-detect from the feed."*
    - A **`[Test]`** button → the PI asks the plugin to fetch + parse the feed (reusing the §4–§5 engine) and reports: reachable? parsed *N* events? next joinable event — or a specific error (401, not-a-calendar, timeout).
+     - The Test report also names **the identity in effect and where it came from** — *configured* / *inferred from the feed* / *none*. This is the **only** surface for the §5.1 identity, deliberately: it is where a user already goes to ask "what does this feed actually do", so a typo'd or stale address is diagnosable without a key-level nudge or any new UI.
 4. **Global** `Poll interval (min): [ 15 ]` (default 15).
 
 **Empty/broken:** a key with no `feedId`, or a `feedId` pointing at a deleted feed, → the §8 no-feed setup prompt.
@@ -428,8 +518,14 @@ The plugin's first Property Inspector — one HTML file, present on every Next-M
 | Join-detection, `callState`, grace fallback (§10) | [#48](https://github.com/sigma/callctl/issues/48) |
 | Configurable open command / profile targeting (§7 tier 2) | [#51](https://github.com/sigma/callctl/issues/51) |
 | URL hardening / canonicalization / tiers (§6.2–§6.4, §12) | [#52](https://github.com/sigma/callctl/issues/52) |
+| **Attendance & cancellation policy — scope, asymmetry** (§5.1) | [#87 map](https://github.com/sigma/callctl/issues/87) |
+| Field evidence for a declined VEVENT (§5.1 identity) | [#88](https://github.com/sigma/callctl/issues/88) |
+| Cross-provider `PARTSTAT`/`STATUS`/`TRANSP` semantics (§5.1) | [#89](https://github.com/sigma/callctl/issues/89) |
+| Identity shape, predicate, `setIdentities`, `offset` (§3, §4, §5.1, §11) | [#90](https://github.com/sigma/callctl/issues/90) |
+| `TRANSP` non-rule (§5.1) | [#91](https://github.com/sigma/callctl/issues/91) |
+| `attending` marking + dismissal rescue (§5, §8, §9, §10) | [#93](https://github.com/sigma/callctl/issues/93) |
 
-Research assets (commit-SHA permalinks — the PR branches have been retired, but each PR's head commit stays reachable via `refs/pull/N/head`): [stream-deck-ical prior art](https://github.com/sigma/callctl/blob/b2bb4c70230cde03ff84647bd1076e85fd15ed5c/docs/research/stream-deck-ical.md) (#43), [join-URL extraction](https://github.com/sigma/callctl/blob/b929dd78a8b4d4da08985b1fea4eecc5ad58cda9/docs/research/ical-join-url-extraction.md) (#45), [plugin-side iCal engine](https://github.com/sigma/callctl/blob/0a24b518a79bd3b2e95a3a00f23ca06d2598fc82/docs/research/next-meeting-ical-engine.md) (#46), [ics library decision](https://github.com/sigma/callctl/blob/d66997c806502d6b87b034f0d6cf4cd9c61d64cb/docs/research/ics-library-decision.md) (#50), [click → open](https://github.com/sigma/callctl/blob/d7c702e6015372c2cdd53b844a61c3d898cc0c5a/docs/research/click-open-join-url.md) (#49), [key display prototype](https://github.com/sigma/callctl/tree/37e83bb4baa3dd9933f624d68002e991e78e361e/packages/plugin/prototypes/next-meeting-key) (#44).
+Research assets (commit-SHA permalinks — the PR branches have been retired, but each PR's head commit stays reachable via `refs/pull/N/head`): [stream-deck-ical prior art](https://github.com/sigma/callctl/blob/b2bb4c70230cde03ff84647bd1076e85fd15ed5c/docs/research/stream-deck-ical.md) (#43), [join-URL extraction](https://github.com/sigma/callctl/blob/b929dd78a8b4d4da08985b1fea4eecc5ad58cda9/docs/research/ical-join-url-extraction.md) (#45), [plugin-side iCal engine](https://github.com/sigma/callctl/blob/0a24b518a79bd3b2e95a3a00f23ca06d2598fc82/docs/research/next-meeting-ical-engine.md) (#46), [ics library decision](https://github.com/sigma/callctl/blob/d66997c806502d6b87b034f0d6cf4cd9c61d64cb/docs/research/ics-library-decision.md) (#50), [click → open](https://github.com/sigma/callctl/blob/d7c702e6015372c2cdd53b844a61c3d898cc0c5a/docs/research/click-open-join-url.md) (#49), [key display prototype](https://github.com/sigma/callctl/tree/37e83bb4baa3dd9933f624d68002e991e78e361e/packages/plugin/prototypes/next-meeting-key) (#44), [ICS attendance, cancellation & transparency](https://github.com/sigma/callctl/blob/96778e2fb02e/docs/research/ics-attendance.md) (#89).
 
 ## 14. Out of scope / deferred (v1)
 
@@ -439,6 +535,8 @@ Research assets (commit-SHA permalinks — the PR branches have been retired, bu
 - Auto-join / Meet-DOM *driving* — press only opens a URL; join-**detection** (§10) is read-only.
 - Displaying non-link events — scope is join-link events only.
 - The build itself — this is a planning artifact.
+- **`X-MICROSOFT-CDO-BUSYSTATUS`** (§5.1) — a vendor-specific rung in an otherwise pure RFC 5545 policy, with no Outlook feed to observe. Revisit when there is one.
+- **Long-press to silence an escalation** (short-press still opens the join URL) — wanted, but its own effort: it has to negotiate with #48's "a press is never join-proof" decision, and fixing *which* events escalate (§5.1) should relieve the pain first.
 
 **In scope but deferred past v1** (nice-to-haves, not blockers):
 
