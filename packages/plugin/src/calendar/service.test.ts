@@ -19,9 +19,13 @@ function fakeFetch(responses: Array<() => Response>) {
     i += 1;
     return make();
   }) as unknown as typeof fetch;
+  const mock = () => (impl as unknown as { mock: { calls: unknown[][] } }).mock;
   return {
     impl,
-    calls: () => (impl as unknown as { mock: { calls: unknown[] } }).mock.calls.length,
+    calls: () => mock().calls.length,
+    /** Request headers the n-th call carried — `{}` when it sent none. */
+    headers: (n: number) =>
+      ((mock().calls[n]?.[1] as RequestInit | undefined)?.headers ?? {}) as Record<string, string>,
   };
 }
 
@@ -156,5 +160,128 @@ describe("CalendarService (§9)", () => {
     expect(svc.openConfig("nope")).toBeUndefined();
     svc.configure(feeds());
     expect(svc.openConfig("work")).toBeUndefined();
+  });
+});
+
+describe("CalendarService identity invalidation (§4, §5.1)", () => {
+  // attendance.ics carries `X-WR-CALNAME:me@example.com` plus a mix of declined /
+  // cancelled / accepted events on 2026-06-15.
+  const ATTENDANCE = readFileSync(
+    join(process.cwd(), "src/calendar/fixtures/attendance.ics"),
+    "utf8",
+  );
+  const ATT_NOW = new Date("2026-06-15T14:00:00Z");
+  const attOk200 = () => new Response(ATTENDANCE, { status: 200, headers: { etag: '"v1"' } });
+
+  const withIdentities = (identities?: string[]) =>
+    parseGlobalSettings({
+      feeds: [{ id: "work", name: "Work", url: "https://host/secret.ics", identities }],
+      pollIntervalMinutes: 15,
+    });
+
+  /** Titles of the instances the §5.1 verdict marked non-attending. */
+  const declined = (svc: CalendarService) =>
+    (svc.snapshot("work")?.list ?? []).filter((i) => !i.attending).map((i) => i.title);
+
+  it("configured identities reach selectMeetings, beating the X-WR-CALNAME inference", async () => {
+    const { impl } = fakeFetch([attOk200]);
+    const svc = new CalendarService({ fetchImpl: impl });
+    svc.configure(withIdentities(["alias@example.com"]));
+    await svc.poll("work", ATT_NOW);
+
+    // Explicit wins outright: only the alias's decline counts, `me@example.com`'s
+    // declines do not. Cancellation is ungated, so it still fires.
+    expect(declined(svc).sort()).toEqual(["Alias declined", "Cancelled", "Cancelled lowercase"]);
+  });
+
+  it("with no configured identities the feed's X-WR-CALNAME is inferred", async () => {
+    const { impl } = fakeFetch([attOk200]);
+    const svc = new CalendarService({ fetchImpl: impl });
+    svc.configure(withIdentities());
+    await svc.poll("work", ATT_NOW);
+
+    expect(declined(svc)).toContain("Declined");
+    expect(declined(svc)).not.toContain("Alias declined");
+  });
+
+  it("a changed identity list forces an unconditional re-fetch and re-select", async () => {
+    const { impl, headers } = fakeFetch([attOk200]);
+    const svc = new CalendarService({ fetchImpl: impl });
+    svc.configure(withIdentities(["alias@example.com"]));
+    await svc.poll("work", ATT_NOW);
+    expect(headers(0)["If-None-Match"]).toBeUndefined();
+
+    svc.configure(withIdentities(["me@example.com"]));
+    await svc.poll("work", ATT_NOW);
+
+    // Validators dropped ⇒ no conditional headers ⇒ a real 200 the server cannot
+    // answer with a 304 off our stale (post-selection) list.
+    expect(headers(1)["If-None-Match"]).toBeUndefined();
+    expect(headers(1)["If-Modified-Since"]).toBeUndefined();
+    expect(declined(svc)).toContain("Declined");
+    expect(declined(svc)).not.toContain("Alias declined");
+  });
+
+  it("keeps rendering the previous list while the re-fetch is in flight — no loading flash", async () => {
+    const { impl } = fakeFetch([attOk200, netFail]);
+    const svc = new CalendarService({ fetchImpl: impl });
+    svc.configure(withIdentities(["alias@example.com"]));
+    await svc.poll("work", ATT_NOW);
+    const before = svc.snapshot("work");
+
+    svc.configure(withIdentities(["me@example.com"]));
+
+    const during = svc.snapshot("work");
+    expect(during?.status).toBe("ok");
+    expect(during?.list).toBe(before?.list);
+
+    // `everLoaded` survived too: the forced re-fetch failing keeps the stale
+    // cache rather than falling back to the cold-start error face (§9).
+    await svc.poll("work", ATT_NOW);
+    expect(svc.snapshot("work")?.status).toBe("ok");
+  });
+
+  it("an unchanged identity list is a no-op — validators survive", async () => {
+    const { impl, headers } = fakeFetch([attOk200, notModified]);
+    const svc = new CalendarService({ fetchImpl: impl });
+    svc.configure(withIdentities(["me@example.com"]));
+    await svc.poll("work", ATT_NOW);
+
+    svc.configure(withIdentities(["me@example.com"]));
+    await svc.poll("work", ATT_NOW);
+
+    expect(headers(1)["If-None-Match"]).toBe('"v1"');
+  });
+
+  it("an edit that resolves to the same addresses is a no-op too (§5.1 normalization)", async () => {
+    const { impl, headers } = fakeFetch([attOk200, notModified]);
+    const svc = new CalendarService({ fetchImpl: impl });
+    svc.configure(withIdentities(["me@example.com", "alias@example.com"]));
+    await svc.poll("work", ATT_NOW);
+
+    // Case, `mailto:`, ordering and a duplicate — all canonicalized away, so the
+    // filter cannot have changed and there is nothing to re-select.
+    svc.configure(withIdentities(["mailto:ALIAS@Example.com", "Me@example.com", "me@example.com"]));
+    await svc.poll("work", ATT_NOW);
+
+    expect(headers(1)["If-None-Match"]).toBe('"v1"');
+  });
+
+  it("setUrl still returns the feed to cold-start — the contrast (§4)", async () => {
+    const { impl } = fakeFetch([attOk200]);
+    const svc = new CalendarService({ fetchImpl: impl });
+    svc.configure(withIdentities(["me@example.com"]));
+    await svc.poll("work", ATT_NOW);
+    expect(svc.snapshot("work")?.list.length ?? 0).toBeGreaterThan(0);
+
+    svc.configure(
+      parseGlobalSettings({
+        feeds: [{ id: "work", name: "Work", url: "https://host/rotated.ics" }],
+        pollIntervalMinutes: 15,
+      }),
+    );
+    const snap = svc.snapshot("work");
+    expect(snap?.status).toBe("loading");
+    expect(snap?.list).toEqual([]);
   });
 });

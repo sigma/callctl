@@ -70,6 +70,18 @@ export function isEmailShaped(s: string): boolean {
 }
 
 /**
+ * Canonical form of a configured identity list: each address normalized
+ * ({@link normalizeAddress}), blanks dropped, deduplicated, and **sorted** — so
+ * two lists that differ only in case, `mailto:` prefixing, whitespace, ordering
+ * or repetition compare equal. `CalendarService` compares this form to decide
+ * whether an identity edit is a real change (§4).
+ */
+export function normalizeIdentities(raw: readonly string[] | undefined): string[] {
+  const cleaned = (raw ?? []).map((s) => normalizeAddress(s)).filter((s) => s.length > 0);
+  return [...new Set(cleaned)].sort();
+}
+
+/**
  * Resolve the addresses that count as "me" for one feed's poll (§5.1), in
  * precedence order:
  *
@@ -94,8 +106,8 @@ export function resolveIdentities(
   configured: readonly string[] | undefined,
   parsed: CalendarResponse,
 ): string[] {
-  const explicit = (configured ?? []).map((s) => normalizeAddress(s)).filter((s) => s.length > 0);
-  if (explicit.length > 0) return [...new Set(explicit)];
+  const explicit = normalizeIdentities(configured);
+  if (explicit.length > 0) return explicit;
 
   const vcalendar = (parsed as unknown as Record<string, unknown>).vcalendar;
   const calName = entryVal(

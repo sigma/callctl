@@ -87,6 +87,33 @@ describe("parseGlobalSettings (§3)", () => {
     expect(g.feeds[3].color).toBeUndefined();
     expect(g.feeds[4].color).toBeUndefined();
   });
+
+  it("keeps trimmed non-empty identities and omits the field otherwise (§3, §5.1)", () => {
+    const g = parseGlobalSettings({
+      feeds: [
+        { id: "a", name: "A", url: "https://h/a.ics", identities: ["  me@example.com ", "x@y.co"] },
+        { id: "b", name: "B", url: "https://h/b.ics" },
+        { id: "c", name: "C", url: "https://h/c.ics", identities: [] },
+        { id: "d", name: "D", url: "https://h/d.ics", identities: "me@example.com" },
+        { id: "e", name: "E", url: "https://h/e.ics", identities: ["", "   "] },
+        {
+          id: "f",
+          name: "F",
+          url: "https://h/f.ics",
+          identities: [42, null, "me@example.com", {}],
+        },
+      ],
+    });
+    expect(g.feeds[0].identities).toEqual(["me@example.com", "x@y.co"]);
+    // Absent, empty, non-array, all-blank: no field at all — an empty list would
+    // only be a second way to say "unset" (§5.1 falls through to inference).
+    expect(g.feeds[1].identities).toBeUndefined();
+    expect(g.feeds[2].identities).toBeUndefined();
+    expect(g.feeds[3].identities).toBeUndefined();
+    expect(g.feeds[4].identities).toBeUndefined();
+    // Mixed junk: the string survivors are kept, the rest dropped.
+    expect(g.feeds[5].identities).toEqual(["me@example.com"]);
+  });
 });
 
 describe("parseKeySettings (§3)", () => {
