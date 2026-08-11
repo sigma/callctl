@@ -36,6 +36,15 @@ export interface NamedFeed {
    * {@link resolvePaletteColor} at render time.
    */
   color?: PaletteToken;
+  /**
+   * Optional addresses that count as **you** on this feed, for the §5.1 declined
+   * rule (#90). Per-feed, never global — a feed *is* an account, so one global
+   * identity would silently match nobody the moment a second account's feed is
+   * added. A `string[]` because aliases are real (an invite to an alias lands on
+   * the same calendar with the alias as `ATTENDEE`). Absent/empty ⇒ the §5.1
+   * `X-WR-CALNAME` inference, then a pure no-op.
+   */
+  identities?: string[];
 }
 
 /** Plugin-wide settings (§3). */
@@ -90,6 +99,17 @@ function parseFeed(raw: unknown): NamedFeed | undefined {
   // Border color: keep only a known palette token; an absent, empty, or unknown
   // value leaves `color` off (⇒ no border), never trusting the stored shape.
   if (isPaletteToken(raw.color)) feed.color = raw.color;
+  // Identities (§3): keep only non-empty trimmed strings. A non-array, or an
+  // array that leaves nothing after filtering, omits the field entirely — an
+  // empty list and an absent one mean the same thing (fall through to §5.1's
+  // inference), so storing `[]` would only be a second way to say "unset".
+  if (Array.isArray(raw.identities)) {
+    const identities = raw.identities
+      .filter((v): v is string => typeof v === "string")
+      .map((s) => s.trim())
+      .filter((s) => s !== "");
+    if (identities.length > 0) feed.identities = identities;
+  }
   if (isRecord(raw.open)) {
     const browser = raw.open.browser;
     const profile = str(raw.open.profile);

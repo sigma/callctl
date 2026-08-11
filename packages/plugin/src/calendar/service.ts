@@ -13,6 +13,7 @@
 
 import type { OpenTarget } from "../open/profile-open.js";
 import type { GlobalSettings } from "../settings.js";
+import { normalizeIdentities, resolveIdentities } from "./attendance.js";
 import { parseFeed, selectMeetings } from "./engine.js";
 import { calendarFallbackUrl, type FeedValidators, fetchFeed } from "./fetch.js";
 import { resolvePaletteColor } from "./palette.js";
@@ -35,6 +36,8 @@ class FeedCache {
   #open: OpenTarget | undefined;
   /** Optional resolved per-feed border hex (#78); reconciled from settings, pure metadata. */
   #borderColor: string | undefined;
+  /** Configured §5.1 identities; empty ⇒ let {@link resolveIdentities} infer per poll. */
+  #identities: readonly string[] = [];
   #validators: FeedValidators | undefined;
   #list: MeetingInstance[] = [];
   #status: FeedStatus = "loading";
@@ -92,6 +95,27 @@ class FeedCache {
     this.#borderColor = color;
   }
 
+  /**
+   * Point this cache at a (possibly new) §5.1 identity list (§4). A change drops
+   * **only the validators** — see the contrast at the `configure` call site.
+   *
+   * Change detection compares the {@link normalizeIdentities} form, the same
+   * canonicalization the verdict itself matches on, so a case, `mailto:`,
+   * whitespace or ordering edit that resolves to the same addresses is correctly
+   * a no-op rather than a pointless unconditional re-fetch.
+   */
+  setIdentities(identities: readonly string[]): void {
+    const next = normalizeIdentities(identities);
+    if (
+      next.length === this.#identities.length &&
+      next.every((v, i) => v === this.#identities[i])
+    ) {
+      return;
+    }
+    this.#identities = next;
+    this.#validators = undefined;
+  }
+
   poll(now: Date, opts: PollOptions): Promise<void> {
     // Coalesce concurrent polls of the same feed onto one request.
     if (this.#inflight) return this.#inflight;
@@ -112,7 +136,10 @@ class FeedCache {
       case "modified": {
         try {
           const parsed = await parseFeed(res.text);
-          this.#list = selectMeetings(parsed, this.feedId, now);
+          // Identity resolution is per-poll: the inference reads this body's
+          // `X-WR-CALNAME` and is never written back to settings (§5.1).
+          const identities = resolveIdentities(this.#identities, parsed);
+          this.#list = selectMeetings(parsed, this.feedId, now, identities);
           this.#validators = res.validators;
           this.#status = "ok";
           this.#everLoaded = true;
@@ -171,11 +198,18 @@ export class CalendarService {
       const existing = this.#feeds.get(feed.id);
       const color = resolvePaletteColor(feed.color);
       if (existing) {
+        // Three invalidation strengths, deliberately (§4): `setUrl` nukes the
+        // cache (a different secret is a *different calendar*, so the cached data
+        // is wrong), `setIdentities` drops only the validators (*same data,
+        // different filter* — re-fetch and re-select, but keep rendering
+        // meanwhile), and `setOpen`/`setBorderColor` are pure metadata.
         existing.setUrl(feed.url);
+        existing.setIdentities(feed.identities ?? []);
         existing.setOpen(feed.open);
         existing.setBorderColor(color);
       } else {
         const cache = new FeedCache(feed.id, feed.url);
+        cache.setIdentities(feed.identities ?? []);
         cache.setOpen(feed.open);
         cache.setBorderColor(color);
         this.#feeds.set(feed.id, cache);
