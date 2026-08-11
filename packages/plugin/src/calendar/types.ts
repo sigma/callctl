@@ -30,6 +30,15 @@ export interface ParsedEvent {
   description?: IcalProperty;
   "ALT-DESC"?: IcalProperty;
   url?: IcalProperty;
+  /**
+   * `ATTENDEE`, read by the §5.1 attendance verdict. **Object-or-array**: a bare
+   * `{ params, val }` when the event carries exactly one, and *every* entry must
+   * be scanned — the §6.1 first-element convention does not carry over. The
+   * address lives on `val` (with a `mailto:` scheme); `PARTSTAT` on `params`.
+   */
+  attendee?: IcalProperty;
+  /** `STATUS`, read by the §5.1 verdict — only `CANCELLED` is acted on. */
+  status?: IcalProperty;
   // node-ical events carry many more fields (start, end, uid, …) — ignored here.
   [key: string]: unknown;
 }
@@ -79,6 +88,8 @@ export interface MeetingInstance {
   sourceFeedId: string;
   /** The §6 join candidate — always tier (a) or (b); tier (c) is dropped. */
   candidate: JoinCandidate;
+  /** §5.1 verdict; `false` ⇒ dropped by §10 dismissal unless held. */
+  attending: boolean;
 }
 
 /**

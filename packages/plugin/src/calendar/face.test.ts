@@ -18,6 +18,7 @@ function instance(start: Date, title = "Standup", end?: Date): MeetingInstance {
     allDay: false,
     title,
     sourceFeedId: "work",
+    attending: true,
     candidate: {
       tier: "a",
       provider: "gmeet",

@@ -17,6 +17,7 @@ function instance(
     allDay: false,
     title: "Sync",
     sourceFeedId: "work",
+    attending: true,
     candidate: {
       tier: "a",
       provider: "gmeet",
