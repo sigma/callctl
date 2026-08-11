@@ -328,6 +328,74 @@ describe("applyDismissal — §10 hold & skip-ahead", () => {
     const b = tierB(-1, 29, "TierB");
     expect(applyDismissal([b], new Set()).map((i) => i.title)).toEqual(["TierB"]);
   });
+
+  /** The same instance as the §5.1 verdict marked it: declined by you, or cancelled. */
+  const nonAttending = (inst: MeetingInstance): MeetingInstance => ({ ...inst, attending: false });
+
+  it("drops a non-attending instance and keeps the attending one (§5.1 applied here)", () => {
+    const gone = nonAttending(meet(5, 35, "gmeet:aaa-bbbb-ccc", "Declined"));
+    const kept = meet(10, 40, "gmeet:ddd-eeee-fff", "Real");
+    expect(applyDismissal([gone, kept], new Set()).map((i) => i.title)).toEqual(["Real"]);
+  });
+
+  it("keeps a non-attending instance you are held in — the rescue (§5.1/§10)", () => {
+    // Held is the only door back in, and it is durable: joining a meeting you
+    // declined (or that the organizer cancelled) readmits it until its DTEND.
+    const declined = nonAttending(meet(-5, 25, "gmeet:aaa-bbbb-ccc", "Declined"));
+    const cancelled = nonAttending(meet(-4, 26, "gmeet:ddd-eeee-fff", "Cancelled"));
+    const kept = (keys: ReadonlySet<string>) =>
+      applyDismissal([declined, cancelled], keys).map((i) => i.title);
+    expect(kept(held(declined, cancelled))).toEqual(["Declined", "Cancelled"]);
+    // …and each is rescued on its own hold, not the other's.
+    expect(kept(held(cancelled))).toEqual(["Cancelled"]);
+  });
+
+  it("a held non-attending instance still triggers skip-ahead for what precedes it", () => {
+    const skipped = meet(-5, 25, "gmeet:aaa-bbbb-ccc", "Skipped"); // attending, never joined
+    const joined = nonAttending(meet(-1, 29, "gmeet:ddd-eeee-fff", "Declined")); // joined anyway
+    const after = meet(40, 70, "gmeet:ggg-hhhh-iii", "After");
+    const kept = applyDismissal([skipped, joined, after], held(joined));
+    // The rescued call lands at offset 0, where it belongs.
+    expect(kept.map((i) => i.title)).toEqual(["Declined", "After"]);
+  });
+
+  it("a non-attending tier-(b) instance is dropped and can never be rescued", () => {
+    // Known limitation (§5.1/§6.3), asserted so nobody "fixes" it: no canonical
+    // code ⇒ joinIdentity is null ⇒ it can never enter the held set, however
+    // loudly you join it. Not a bug.
+    const b = nonAttending(tierB(-1, 29, "DeclinedTierB"));
+    expect(joinIdentity(b)).toBeNull();
+    expect(applyDismissal([b], new Set())).toEqual([]);
+    expect(applyDismissal([b], held(b))).toEqual([]);
+  });
+
+  it("offset over the dismissal output shifts as a unit — no hole, no placeholder", () => {
+    const gone = nonAttending(meet(5, 35, "gmeet:aaa-bbbb-ccc", "Declined"));
+    const first = meet(10, 40, "gmeet:ddd-eeee-fff", "First");
+    const second = meet(50, 80, "gmeet:ggg-hhhh-iii", "Second");
+    const kept = applyDismissal([gone, first, second], new Set());
+    expect(currentInstance(kept, 0, base)?.title).toBe("First");
+    expect(currentInstance(kept, 1, base)?.title).toBe("Second");
+    expect(currentInstance(kept, 2, base)).toBeUndefined();
+  });
+
+  it("rescues a declined and a cancelled meeting alike, straight from a feed", async () => {
+    const parsed = await parseFeed(fixture("attendance.ics"));
+    const list = selectMeetings(parsed, "feed-1", NOW_ATTEND, ["me@example.com"]);
+    const byTitle = (t: string) => list.find((i) => i.title === t) as MeetingInstance;
+    const titles = (keys: ReadonlySet<string>) =>
+      applyDismissal(list, keys)
+        .map((i) => i.title)
+        .filter((t) => t === "Declined" || t === "Cancelled");
+
+    expect(titles(new Set())).toEqual([]);
+    // One clause covers both: the trigger is being demonstrably in the call, which
+    // outranks the organizer's voice as much as your own earlier RSVP.
+    expect(titles(held(byTitle("Declined"), byTitle("Cancelled")))).toEqual([
+      "Declined",
+      "Cancelled",
+    ]);
+  });
 });
 
 describe("isJoined — live in-call signal (§10)", () => {

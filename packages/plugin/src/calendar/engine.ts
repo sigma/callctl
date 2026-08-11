@@ -173,10 +173,21 @@ export function isJoined(inst: MeetingInstance, joinedKey: string | null, now: D
  * the call (the live signal clears but the identity is remembered), so the late
  * flash never resumes for a meeting you already joined.
  *
- * The one thing dismissal *does* drop is **skip-ahead** casualties: when you join
- * a later event directly (skipping event N to join N+1), every *non-held*
- * instance before the latest held one is dropped so the key advances to the held
- * event you are actually in.
+ * What dismissal *does* drop is:
+ *
+ * - **Skip-ahead casualties:** when you join a later event directly (skipping
+ *   event N to join N+1), every *non-held* instance before the latest held one is
+ *   dropped so the key advances to the held event you are actually in.
+ * - **Non-attending instances** (§5.1): `attending: false` — you declined it, or
+ *   the organizer cancelled it — unless it is held. Being held is the single door
+ *   back in, and it rescues a declined and a `STATUS:CANCELLED` instance on the
+ *   same clause: its trigger is that you are demonstrably *in* this call, which
+ *   outranks both the organizer's voice and your own earlier RSVP. The rescue
+ *   rides the durable held set, never the live join signal, so it survives leaving
+ *   the call; and since held *is* the calm in-call state (§8), a rescued meeting
+ *   can never flash. A **tier-(b)** instance has no {@link joinIdentity} and so can
+ *   never be held — a declined link-in-the-description meeting stays dropped. That
+ *   is a known spec limitation (§5.1), not a bug.
  *
  * A **press never counts as join-proof** (§10): only a real join affects this —
  * this function never sees a press.
@@ -200,6 +211,7 @@ export function applyDismissal(
 
   return list.filter((inst, i) => {
     if (held(inst)) return true; // joined this session → hold until DTEND (§9), never re-flash
+    if (!inst.attending) return false; // §5.1: declined or cancelled, and not rescued by a hold
     return i >= lastHeld; // keep, except non-held events skipped before the latest held one
   });
 }

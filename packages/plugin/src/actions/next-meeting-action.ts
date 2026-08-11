@@ -207,7 +207,9 @@ export class NextMeetingAction extends SingletonAction {
 
     // Classify the *surfaced* (post-§10-dismissal) event exactly as the face does,
     // so the press target matches what the key shows. A press is not join-proof,
-    // so it never itself dismisses.
+    // so it never itself dismisses. As on the render path, the live-join fold runs
+    // on the *pre*-dismissal list — that ordering is what lets a non-attending
+    // meeting you joined anyway be held, and so rescued (§5.1, #96).
     this.#recordLiveJoins(snapshot.list, now);
     const horizon = displayHorizon(
       applyDismissal(snapshot.list, this.#joinedOccurrences),
@@ -362,7 +364,10 @@ export class NextMeetingAction extends SingletonAction {
     // meeting stays until its DTEND and shows the calm in-call face, and any
     // non-held meeting skipped before it drops out so the key advances. A
     // never-joined late meeting is *not* dropped — it keeps surfacing (its flash
-    // calming to steady overdue) until its own DTEND.
+    // calming to steady overdue) until its own DTEND, while a non-attending one
+    // (§5.1) drops unless held. **The order is load-bearing**: the fold must see
+    // the *pre*-dismissal list, or a declined-then-joined meeting could never
+    // enter the held set that rescues it (§5.1, #96).
     this.#recordLiveJoins(snapshot?.list ?? [], now);
     const list = applyDismissal(snapshot?.list ?? [], this.#joinedOccurrences);
 

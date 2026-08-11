@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { joinIdentity } from "./engine.js";
+import { applyDismissal, joinIdentity } from "./engine.js";
 import {
   computeFace,
   type Escalation,
@@ -97,6 +97,23 @@ describe("computeFace (§8 baseline)", () => {
       base({ now, list: [started], heldKeys: new Set([joinIdentity(started) as string]) }),
     );
     expect(face).toEqual({ kind: "active", title: "Sync", time: "29m" });
+  });
+
+  it("renders a rescued non-attending event as calm in-call, never a red flash (§5.1)", () => {
+    const now = new Date(2026, 6, 27, 9, 0);
+    // Declined (or cancelled) and started 1m ago — dismissal would drop it, but
+    // you joined anyway, so it is held. Held *is* the in-call state, which is why
+    // the original bug (a declined meeting hard-flashing red) cannot recur here.
+    const started = instance(new Date(2026, 6, 27, 8, 59), "Sync", new Date(2026, 6, 27, 9, 29));
+    const rescued: MeetingInstance = { ...started, attending: false };
+    const heldKeys = new Set([joinIdentity(rescued) as string]);
+    const face = computeFace(base({ now, list: applyDismissal([rescued], heldKeys), heldKeys }));
+    expect(face).toEqual({ kind: "active", title: "Sync", time: "29m" });
+
+    // The un-rescued half (§5.1): never joined ⇒ dropped before any face is
+    // computed, so it reaches no escalation state at all — the original bug.
+    const dropped = computeFace(base({ now, list: applyDismissal([rescued], new Set()) }));
+    expect(dropped).toEqual({ kind: "free", hint: null });
   });
 
   it("does not treat an unheld event as in-call even if its code matches another (§10)", () => {
