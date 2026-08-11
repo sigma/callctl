@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { resolveIdentities } from "./attendance.js";
 import {
   applyDismissal,
   currentInstance,
@@ -17,6 +18,9 @@ import type { MeetingInstance } from "./types.js";
 // contains literal '%' characters (worktree paths do).
 const fixture = (name: string): string =>
   readFileSync(join(process.cwd(), "src/calendar/fixtures", name), "utf8");
+
+/** Reference instant for the §5.1 attendance fixture. */
+const NOW_ATTEND = new Date("2026-06-15T14:00:00Z");
 
 /** Wall-clock in a named zone, e.g. "09:00", for DST assertions. */
 const wallClock = (d: Date, tz: string): string =>
@@ -150,6 +154,7 @@ describe("displayHorizon — configurable duration horizon (§5)", () => {
     allDay: false,
     title: "x",
     sourceFeedId: "f",
+    attending: true,
     candidate: { tier: "b" },
   });
 
@@ -215,6 +220,7 @@ describe("currentInstance — boundary advance (§9)", () => {
     allDay: false,
     title,
     sourceFeedId: "f",
+    attending: true,
     candidate: { tier: "b" },
   });
 
@@ -259,6 +265,7 @@ describe("applyDismissal — §10 hold & skip-ahead", () => {
     allDay: false,
     title,
     sourceFeedId: "f",
+    attending: true,
     candidate: { tier: "a", provider: "gmeet", code, joinUrl: "https://meet.google.com/x" },
   });
   /** A tier-(b) instance (no code — never joinable). */
@@ -268,6 +275,7 @@ describe("applyDismissal — §10 hold & skip-ahead", () => {
     allDay: false,
     title,
     sourceFeedId: "f",
+    attending: true,
     candidate: { tier: "b" },
   });
   /** The held set for a set of instances (their {@link joinIdentity}s). */
@@ -330,6 +338,7 @@ describe("isJoined — live in-call signal (§10)", () => {
     allDay: false,
     title: "x",
     sourceFeedId: "f",
+    attending: true,
     candidate: { tier: "a", provider: "gmeet", code, joinUrl: "https://meet.google.com/x" },
   });
 
@@ -345,5 +354,128 @@ describe("isJoined — live in-call signal (§10)", () => {
 
   it("never matches with no live key, nor a tier-(b) event", () => {
     expect(isJoined(meet(-2, "gmeet:aaa-bbbb-ccc"), null, base)).toBe(false);
+  });
+});
+
+describe("selectMeetings — attendance & cancellation verdict (§5.1)", () => {
+  const NOW = new Date("2026-06-15T14:00:00Z");
+  const ME = ["me@example.com"];
+
+  /** `title → attending` for every selected instance, with the given identities. */
+  const verdicts = async (identities: readonly string[] = []) => {
+    const parsed = await parseFeed(fixture("attendance.ics"));
+    const map = new Map<string, boolean>();
+    for (const i of selectMeetings(parsed, "feed-1", NOW, identities)) {
+      map.set(i.title, i.attending);
+    }
+    return map;
+  };
+
+  it("marks without dropping — every event is still returned", async () => {
+    const v = await verdicts(ME);
+    expect(v.get("Declined")).toBe(false);
+    expect(v.get("Cancelled")).toBe(false);
+    // The drop lives downstream in applyDismissal (§10), not here.
+    expect(v.has("Declined")).toBe(true);
+    expect(v.has("Cancelled")).toBe(true);
+  });
+
+  it("allows by default: no ATTENDEE, TENTATIVE, NEEDS-ACTION, DELEGATED, unrecognized", async () => {
+    const v = await verdicts(ME);
+    expect(v.get("Accepted")).toBe(true);
+    expect(v.get("No attendee")).toBe(true);
+    expect(v.get("Tentative partstat")).toBe(true);
+    expect(v.get("Delegated")).toBe(true);
+    expect(v.get("Unknown partstat")).toBe(true);
+  });
+
+  it("treats STATUS:TENTATIVE as attending — only CANCELLED drops", async () => {
+    // STATUS is the organizer's voice; their uncertainty is not your decline.
+    expect((await verdicts(ME)).get("Organizer tentative")).toBe(true);
+  });
+
+  it("drops a CANCELLED event with no identity configured (unconditional half)", async () => {
+    const v = await verdicts([]);
+    expect(v.get("Cancelled")).toBe(false);
+    // …while the *declined* half is a pure no-op without an identity.
+    expect(v.get("Declined")).toBe(true);
+  });
+
+  it("ignores someone else's decline", async () => {
+    expect((await verdicts(ME)).get("Someone else declined")).toBe(true);
+  });
+
+  it("matches case-insensitively and strips the mailto: scheme", async () => {
+    const v = await verdicts(ME);
+    // The fixture's own ATTENDEE is `mailto:ME@Example.com`.
+    expect(v.get("Declined")).toBe(false);
+    expect(v.get("Lowercase declined")).toBe(false);
+    expect(v.get("Cancelled lowercase")).toBe(false);
+    expect((await verdicts(["MAILTO:Me@EXAMPLE.com"])).get("Declined")).toBe(false);
+  });
+
+  it("matches any configured alias", async () => {
+    const v = await verdicts([...ME, "alias@example.com"]);
+    expect(v.get("Alias declined")).toBe(false);
+    expect(v.get("Declined")).toBe(false);
+    // …and an unconfigured alias is someone else.
+    expect((await verdicts(ME)).get("Alias declined")).toBe(true);
+  });
+
+  it("evaluates the expanded occurrence: one declined RECURRENCE-ID override", async () => {
+    const parsed = await parseFeed(fixture("attendance.ics"));
+    const series = selectMeetings(parsed, "feed-1", NOW, ME)
+      .filter((i) => i.title === "Series")
+      .slice(0, 3);
+    expect(series).toHaveLength(3);
+    // The master VEVENT is ACCEPTED; only the 06-17 override declines. Testing
+    // the master instead of occ.event would silently mark all three attending.
+    expect(series.map((i) => i.attending)).toEqual([true, false, true]);
+  });
+});
+
+describe("resolveIdentities — configured, inferred, neither (§5.1)", () => {
+  const calendar = (calName: string | null): string =>
+    [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//callctl//test//EN",
+      ...(calName === null ? [] : [`X-WR-CALNAME:${calName}`]),
+      "END:VCALENDAR",
+      "",
+    ].join("\n");
+
+  it("infers an email-shaped X-WR-CALNAME (the no-setup common case)", async () => {
+    const parsed = await parseFeed(calendar("Owner@Example.COM"));
+    expect(resolveIdentities([], parsed)).toEqual(["owner@example.com"]);
+  });
+
+  it("does not infer a display name", async () => {
+    // The shape test's only job: reject names like this, not validate RFC 5322.
+    expect(resolveIdentities([], await parseFeed(calendar("Arbora Team")))).toEqual([]);
+    expect(resolveIdentities([], await parseFeed(calendar("a@b")))).toEqual([]);
+    expect(resolveIdentities([], await parseFeed(calendar("@example.com")))).toEqual([]);
+    expect(resolveIdentities([], await parseFeed(calendar("a@b@c.com")))).toEqual([]);
+    expect(resolveIdentities(undefined, await parseFeed(calendar(null)))).toEqual([]);
+  });
+
+  it("lets configured identities suppress inference outright (never a union)", async () => {
+    const parsed = await parseFeed(calendar("owner@example.com"));
+    expect(resolveIdentities(["me@example.com"], parsed)).toEqual(["me@example.com"]);
+  });
+
+  it("normalizes and de-duplicates configured identities", async () => {
+    const parsed = await parseFeed(calendar(null));
+    expect(resolveIdentities([" MAILTO:Me@Example.com ", "me@example.com", ""], parsed)).toEqual([
+      "me@example.com",
+    ]);
+  });
+
+  it("inference reaches the verdict end-to-end (X-WR-CALNAME is me@example.com)", async () => {
+    const parsed = await parseFeed(fixture("attendance.ics"));
+    const list = selectMeetings(parsed, "feed-1", NOW_ATTEND, resolveIdentities([], parsed));
+    const byTitle = new Map(list.map((i) => [i.title, i.attending]));
+    expect(byTitle.get("Declined")).toBe(false);
+    expect(byTitle.get("Someone else declined")).toBe(true);
   });
 });

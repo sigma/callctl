@@ -12,6 +12,7 @@
 
 import type { CalendarResponse, VEvent } from "node-ical";
 import ical from "node-ical";
+import { isAttending } from "./attendance.js";
 import { extractJoinCandidate } from "./extract.js";
 import type { DisplayHorizon, MeetingInstance, ParsedEvent } from "./types.js";
 
@@ -44,16 +45,26 @@ function readSummary(v: unknown): string {
  * 3. Keep instances whose `end > now`.
  * 4. Filter to instances that yield a join candidate (§6 — tiers (a) and (b)
  *    both count; tier (c) is dropped).
- * 5. Stable-sort `start ↑ → end ↑ → uid`.
+ * 5. **Mark** each survivor with the §5.1 attendance verdict ({@link isAttending},
+ *    evaluated on the *expanded occurrence* so a `RECURRENCE-ID` override's own
+ *    `STATUS`/`PARTSTAT` is what counts). This step marks and **does not drop** —
+ *    the drop is one clause in {@link applyDismissal}, which is what makes a
+ *    declined-then-joined meeting rescuable.
+ * 6. Stable-sort `start ↑ → end ↑ → uid`.
  *
- * @param parsed  a {@link parseFeed} result.
- * @param feedId  the `id` of the feed these events came from — stamped on each instance.
- * @param now     the reference instant (injected for determinism/testing).
+ * @param parsed      a {@link parseFeed} result.
+ * @param feedId      the `id` of the feed these events came from — stamped on each instance.
+ * @param now         the reference instant (injected for determinism/testing).
+ * @param identities  the feed's **resolved** identities ({@link resolveIdentities}) — i.e.
+ *                    configured-or-inferred, already collapsed. Empty (the default) makes
+ *                    the declined half of the verdict a no-op; the *cancelled* half still
+ *                    fires, so an unidentifiable feed fails toward showing the meeting.
  */
 export function selectMeetings(
   parsed: CalendarResponse,
   feedId: string,
   now: Date,
+  identities: readonly string[] = [],
 ): MeetingInstance[] {
   const from = new Date(now.getTime() - SYNTH_DURATION_MS); // catch just-started no-DTEND meetings
   const to = new Date(now.getTime() + HORIZON_DAYS * 24 * 60 * 60 * 1000);
@@ -78,7 +89,8 @@ export function selectMeetings(
 
       if (end.getTime() <= nowMs) continue; // keep only end > now
 
-      const candidate = extractJoinCandidate(occ.event as unknown as ParsedEvent);
+      const parsedEvent = occ.event as unknown as ParsedEvent;
+      const candidate = extractJoinCandidate(parsedEvent);
       if (candidate === null) continue; // tier (c) — no link, dropped
 
       rows.push({
@@ -89,6 +101,7 @@ export function selectMeetings(
           title: readSummary(occ.summary),
           sourceFeedId: feedId,
           candidate,
+          attending: isAttending(parsedEvent, identities),
         },
         uid: event.uid ?? "",
       });
