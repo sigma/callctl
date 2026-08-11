@@ -507,4 +507,27 @@ describe("NextMeetingAction — setImage encoding", () => {
     expect(svg).not.toContain("#ff5c50"); // never the red late/overdue flash
     action.onWillDisappear(disappearEv(key));
   });
+
+  it("rescues a non-attending meeting you joined anyway, and only then (§5.1)", () => {
+    // Pins the load-bearing ordering: the live-join fold runs on the
+    // *pre*-dismissal list, so a declined meeting can still enter the held set —
+    // the one door back in. Without the join it is simply dropped.
+    const declined = instance(-5 * 60_000, 25 * 60_000, { attending: false });
+    const service = fakeService({ snapshot: { status: "ok", list: [declined] } });
+
+    const unjoined = new NextMeetingAction("uuid", service, { now, joinedKey: () => null });
+    const k1 = fakeKey("k1");
+    unjoined.onWillAppear(appearEv(k1, { feedId: "work", offset: 0 }));
+    expect(lastImage(k1)).toContain("Free"); // dropped — never any red state
+    unjoined.onWillDisappear(disappearEv(k1));
+
+    const joined = new NextMeetingAction("uuid", service, {
+      now,
+      joinedKey: () => "gmeet:abc-def-ghi",
+    });
+    const k2 = fakeKey("k2");
+    joined.onWillAppear(appearEv(k2, { feedId: "work", offset: 0 }));
+    expect(lastImage(k2)).toContain("#0b2b30"); // held ⇒ calm teal in-call
+    joined.onWillDisappear(disappearEv(k2));
+  });
 });
