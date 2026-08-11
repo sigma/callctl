@@ -10,6 +10,7 @@
  * secret** (§12): it never appears in the returned verdict and is never logged.
  */
 
+import { type IdentitySource, resolveIdentityWithSource } from "./attendance.js";
 import { parseFeed, selectMeetings } from "./engine.js";
 import { fetchFeed } from "./fetch.js";
 
@@ -22,11 +23,33 @@ export interface TestFeedNext {
 }
 
 /**
+ * Which addresses counted as "me" for this test, and where they came from (§5.1)
+ * — the `[Test]` report is the **only** surface for the identity, so it has to
+ * say enough to diagnose a typo'd or stale one.
+ *
+ * The `addresses` are always the **canonical** form a poll compares with, so
+ * `Me@Example.com ` reads back as `me@example.com` and a stray character is
+ * visible. `none` means the declined half of the verdict is a no-op for this
+ * feed — a fully functional feed, not an error. `"unknown"` is the one source
+ * this wire type adds to §5.1's three-rung ladder: the server answered `304`, so
+ * there was no body to infer from and we decline to *report* a `none` we never
+ * actually looked for.
+ *
+ * Addresses are **not** secrets (unlike the feed URL, §12): the user typed them
+ * one field away, and hiding them would defeat the point of the report.
+ */
+export interface TestFeedIdentity {
+  source: IdentitySource | "unknown";
+  addresses: string[];
+}
+
+/**
  * The verdict of one `[Test]` (§11). Never carries the URL. On success it reports
  * the total `VEVENT` count (`events`), how many of those yield a join link
- * (`joinable`, §6 tiers a/b), and the next joinable instance (`next`, `null` when
- * none is upcoming). On failure it names a specific reason the PI can explain
- * ("401", "not a calendar", "timed out", …); `status` rides an HTTP failure.
+ * (`joinable`, §6 tiers a/b), the next joinable instance (`next`, `null` when
+ * none is upcoming), and the §5.1 `identity` in effect. On failure it names a
+ * specific reason the PI can explain ("401", "not a calendar", "timed out", …);
+ * `status` rides an HTTP failure.
  */
 export type TestFeedResult =
   | {
@@ -34,6 +57,7 @@ export type TestFeedResult =
       events: number;
       joinable: number;
       next: TestFeedNext | null;
+      identity: TestFeedIdentity;
     }
   | { ok: false; error: "scheme" | "timeout" | "network" | "not-a-calendar" }
   | { ok: false; error: "http"; status: number };
@@ -45,6 +69,12 @@ export interface TestFeedOptions {
   timeoutMs?: number;
   /** Reference instant for selection (injected for deterministic tests; defaults to now). */
   now?: Date;
+  /**
+   * The candidate feed's configured `identities` (§3) — the *unsaved* editor
+   * value, so a Test reports what the address the user is currently typing would
+   * do. Absent/blank ⇒ the §5.1 inference, exactly as a real poll.
+   */
+  identities?: readonly string[];
 }
 
 /**
@@ -55,6 +85,9 @@ export interface TestFeedOptions {
  * cache-reuse path. Fetch/HTTP failures map straight from {@link fetchFeed}'s
  * typed reasons; a body that `node-ical` cannot parse is reported as
  * `not-a-calendar` (the URL resolved but did not serve iCal). Never throws.
+ *
+ * A success verdict also reports the §5.1 `identity` in effect, resolved from
+ * `opts.identities` + the fetched body exactly as a poll would.
  */
 export async function testFeed(url: string, opts: TestFeedOptions = {}): Promise<TestFeedResult> {
   const res = await fetchFeed(url, { fetchImpl: opts.fetchImpl, timeoutMs: opts.timeoutMs });
@@ -69,7 +102,16 @@ export async function testFeed(url: string, opts: TestFeedOptions = {}): Promise
   // does anyway, we have no cached body to describe — treat it as reachable but
   // empty rather than inventing a count.
   if (res.kind === "not-modified") {
-    return { ok: true, events: 0, joinable: 0, next: null };
+    // No body ⇒ nothing to infer from. A configured list still stands on its own;
+    // without one the honest answer is "unknown", not "none".
+    const resolved = resolveIdentityWithSource(opts.identities, null);
+    return {
+      ok: true,
+      events: 0,
+      joinable: 0,
+      next: null,
+      identity: resolved.source === "none" ? { source: "unknown", addresses: [] } : resolved,
+    };
   }
 
   let parsed: Awaited<ReturnType<typeof parseFeed>>;
@@ -95,13 +137,18 @@ export async function testFeed(url: string, opts: TestFeedOptions = {}): Promise
   ).length;
 
   const now = opts.now ?? new Date();
-  const list = selectMeetings(parsed, "__test__", now);
+  // Resolve once and reuse: the reported identity is *by construction* the one
+  // selection ran with, so the report can never describe a different rule than
+  // the one applied.
+  const identity = resolveIdentityWithSource(opts.identities, parsed);
+  const list = selectMeetings(parsed, "__test__", now, identity.addresses);
   const head = list[0];
   return {
     ok: true,
     events,
     joinable: list.length,
     next: head ? { title: head.title, startMs: head.start.getTime() } : null,
+    identity,
   };
 }
 
@@ -137,7 +184,19 @@ export async function handlePiTestMessage(
   if (typeof url !== "string") return null;
   const requestId = (payload as { requestId?: unknown }).requestId;
 
-  const result = await testFeed(url, opts);
+  // `identities` is optional, but a *present* one that isn't a string list is a
+  // malformed message, not an empty one: rejecting outright beats silently
+  // testing with no identity and reporting a `none` the user never asked for.
+  const rawIdentities = (payload as { identities?: unknown }).identities;
+  let identities: string[] | undefined;
+  if (rawIdentities !== undefined) {
+    if (!Array.isArray(rawIdentities) || rawIdentities.some((s) => typeof s !== "string")) {
+      return null;
+    }
+    identities = rawIdentities as string[];
+  }
+
+  const result = await testFeed(url, { ...opts, identities });
   return {
     command: "testResult",
     requestId: typeof requestId === "string" ? requestId : "",

@@ -82,6 +82,22 @@ export function normalizeIdentities(raw: readonly string[] | undefined): string[
 }
 
 /**
+ * Which rung of the §5.1 precedence ladder answered — `"configured"` (explicit
+ * `NamedFeed.identities`), `"inferred"` (read off `X-WR-CALNAME`), or `"none"`
+ * (neither, so the declined half is a no-op). A poll ignores this; §11's
+ * `[Test]` report is the one surface that has to *name* where the identity came
+ * from, and it must be the same answer the poll used.
+ */
+export type IdentitySource = "configured" | "inferred" | "none";
+
+/** The resolved §5.1 identity plus the ladder rung it came from. */
+export interface ResolvedIdentity {
+  source: IdentitySource;
+  /** Normalized (lower-cased, `mailto:`-free) addresses; empty iff `source` is `"none"`. */
+  addresses: string[];
+}
+
+/**
  * Resolve the addresses that count as "me" for one feed's poll (§5.1), in
  * precedence order:
  *
@@ -100,22 +116,41 @@ export function normalizeIdentities(raw: readonly string[] | undefined): string[
  * Inference is **ephemeral**: recomputed each poll, never written back to
  * settings (a background poll writing user settings races the PI editor).
  *
+ * The ladder lives **here only**: {@link resolveIdentities} is the poll's view of
+ * it (addresses alone) and §11's `[Test]` report is the labelled view, so the two
+ * cannot describe different rules.
+ *
+ * @param parsed the feed body, or `null` when there is none to infer from (a
+ *               `304` with no cached body) — configured identities still stand.
+ */
+export function resolveIdentityWithSource(
+  configured: readonly string[] | undefined,
+  parsed: CalendarResponse | null,
+): ResolvedIdentity {
+  const explicit = normalizeIdentities(configured);
+  if (explicit.length > 0) return { source: "configured", addresses: explicit };
+
+  const vcalendar = (parsed as unknown as Record<string, unknown> | null)?.vcalendar;
+  const calName = entryVal(
+    entries((vcalendar as Record<string, unknown> | undefined)?.["WR-CALNAME"])[0],
+  );
+  if (calName !== undefined && isEmailShaped(calName)) {
+    return { source: "inferred", addresses: [normalizeAddress(calName)] };
+  }
+
+  return { source: "none", addresses: [] };
+}
+
+/**
+ * The poll's view of {@link resolveIdentityWithSource}: just the addresses.
+ *
  * @returns normalized (lower-cased, `mailto:`-free) addresses, deduplicated.
  */
 export function resolveIdentities(
   configured: readonly string[] | undefined,
   parsed: CalendarResponse,
 ): string[] {
-  const explicit = normalizeIdentities(configured);
-  if (explicit.length > 0) return explicit;
-
-  const vcalendar = (parsed as unknown as Record<string, unknown>).vcalendar;
-  const calName = entryVal(
-    entries((vcalendar as Record<string, unknown> | undefined)?.["WR-CALNAME"])[0],
-  );
-  if (calName !== undefined && isEmailShaped(calName)) return [normalizeAddress(calName)];
-
-  return [];
+  return resolveIdentityWithSource(configured, parsed).addresses;
 }
 
 /**
