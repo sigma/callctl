@@ -1,6 +1,6 @@
 import type { Message } from "@callctl/protocol";
 import { type MidiDevices, matchesMidiDevice } from "../config.js";
-import type { SurfacePlugin } from "../plugin.js";
+import { isMidiAddressable, type SurfacePlugin } from "../plugin.js";
 import { BaseTransport, type Retargetable } from "./transport.js";
 
 /**
@@ -22,7 +22,8 @@ import { BaseTransport, type Retargetable } from "./transport.js";
  * transport holds no bindings at all.
  *
  * The dispatch mapping is quirky but preserved exactly:
- *  - the CC controller number selects the plugin **by its `ID()`**,
+ *  - the CC controller number selects the plugin **by its `midiCC()`** — a
+ *    plugin that declares none is not installed here at all,
  *  - the high nibble of the CC value selects the handler by the order it was
  *    registered (`handle()` call index),
  *  - the low nibble is passed through as the message `data`.
@@ -36,7 +37,7 @@ export class MidiTransport extends BaseTransport implements Retargetable<MidiDev
   /** The live MIDI access, once acquired; null before ready and after close. */
   #access: MIDIAccess | null = null;
 
-  /** plugin ID → (op ordinal → handler). */
+  /** plugin CC number → (op ordinal → handler). */
   readonly midiMap = new Map<number, Map<number, (msg: Message) => void>>();
   /** Inputs we currently have a callback bound on, so we can unbind them. */
   readonly #inputs = new Set<MIDIInput>();
@@ -110,8 +111,14 @@ export class MidiTransport extends BaseTransport implements Retargetable<MidiDev
   }
 
   acceptPlugin(plugin: SurfacePlugin): void {
-    this.#currentPlugin = plugin.ID();
-    console.log(`Accepting plugin ${plugin.ID()}`);
+    // MIDI addressing is opt-in: a plugin with no CC number is unreachable over
+    // this transport, so installing it would only park handlers in a `midiMap`
+    // slot no incoming message could ever name. Skip it entirely.
+    if (!isMidiAddressable(plugin)) {
+      return;
+    }
+    this.#currentPlugin = plugin.midiCC();
+    console.log(`Accepting plugin ${plugin.ID()} on CC ${this.#currentPlugin}`);
     this.#currentOp = 0;
     this.midiMap.set(this.#currentPlugin, new Map());
 

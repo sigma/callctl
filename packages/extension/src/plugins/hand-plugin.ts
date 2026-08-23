@@ -1,6 +1,6 @@
 import { Command, message, SelectorKey, StateEvent, StateValue } from "@callctl/protocol";
 import type { Disposer } from "../core/disposer.js";
-import type { SurfacePlugin } from "../core/plugin.js";
+import type { MidiAddressable, SurfacePlugin } from "../core/plugin.js";
 import type { Transport } from "../core/transport/transport.js";
 import { ControlsNotFoundError, HTMLModel, type UIElement } from "../meet/model.js";
 import { type SelectorRegistry, selectors } from "../meet/selectors.js";
@@ -156,7 +156,7 @@ export class ModeledHandAPI implements HandAPI {
   }
 }
 
-class HandPlugin implements SurfacePlugin {
+class HandPlugin implements SurfacePlugin, MidiAddressable {
   readonly #model: HTMLHandModel;
   readonly #api: HandAPI;
   readonly #state: HandState;
@@ -167,7 +167,11 @@ class HandPlugin implements SurfacePlugin {
     this.#state = new ModeledHandState(this.#model);
   }
 
-  ID(): number {
+  ID(): string {
+    return "hand";
+  }
+
+  midiCC(): number {
     return 100;
   }
 

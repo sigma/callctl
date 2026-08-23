@@ -1,6 +1,6 @@
 import { Command, message, SelectorKey, StateEvent, StateValue } from "@callctl/protocol";
 import type { Disposer } from "../core/disposer.js";
-import type { SurfacePlugin } from "../core/plugin.js";
+import type { MidiAddressable, SurfacePlugin } from "../core/plugin.js";
 import type { Transport } from "../core/transport/transport.js";
 import { ControlsNotFoundError, HTMLModel, type UIElement } from "../meet/model.js";
 import { type SelectorRegistry, selectors } from "../meet/selectors.js";
@@ -156,7 +156,7 @@ export class ModeledCaptionsAPI implements CaptionsAPI {
   }
 }
 
-class CaptionsPlugin implements SurfacePlugin {
+class CaptionsPlugin implements SurfacePlugin, MidiAddressable {
   readonly #model: HTMLCaptionsModel;
   readonly #api: CaptionsAPI;
   readonly #state: CaptionsState;
@@ -167,7 +167,11 @@ class CaptionsPlugin implements SurfacePlugin {
     this.#state = new ModeledCaptionsState(this.#model);
   }
 
-  ID(): number {
+  ID(): string {
+    return "captions";
+  }
+
+  midiCC(): number {
     return 102;
   }
 

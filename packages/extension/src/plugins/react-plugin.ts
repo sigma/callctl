@@ -1,5 +1,5 @@
 import { Command, REACTION_SLUGS, reactionLabel, SelectorKey } from "@callctl/protocol";
-import type { SurfacePlugin } from "../core/plugin.js";
+import type { MidiAddressable, SurfacePlugin } from "../core/plugin.js";
 import type { Transport } from "../core/transport/transport.js";
 import { type SelectorRegistry, selectors } from "../meet/selectors.js";
 
@@ -92,14 +92,18 @@ export class ReactAPI {
   }
 }
 
-class ReactPlugin implements SurfacePlugin {
+class ReactPlugin implements SurfacePlugin, MidiAddressable {
   readonly #api: ReactAPI;
 
   constructor() {
     this.#api = new ReactAPI();
   }
 
-  ID(): number {
+  ID(): string {
+    return "react";
+  }
+
+  midiCC(): number {
     return 101;
   }
 

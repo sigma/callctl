@@ -32,7 +32,7 @@ class FakeTransport extends BaseTransport implements Retargetable<number> {
 }
 
 function fakePlugin(): SurfacePlugin {
-  return { ID: () => 1, installHooks: vi.fn(), installHandlers: vi.fn() };
+  return { ID: () => "fake", installHooks: vi.fn(), installHandlers: vi.fn() };
 }
 
 describe("TransportRegistry", () => {
