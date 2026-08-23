@@ -1,7 +1,7 @@
 import type { SelectorConfig } from "@callctl/protocol";
 import { Command, message, StateEvent } from "@callctl/protocol";
+import type { Transport } from "../core/transport/transport.js";
 import { type SelectorRegistry, selectors } from "../meet/selectors.js";
-import type { Transport } from "../transport/transport.js";
 import type { MeetPlugin } from "./plugin.js";
 
 /**

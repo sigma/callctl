@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import type { Message } from "../transport/transport.js";
+import type { Message } from "../core/transport/transport.js";
 import { ModeledAPI, ModeledState } from "./api.js";
 import { HTMLModel, InputDevice } from "./model.js";
 

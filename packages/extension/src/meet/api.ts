@@ -1,5 +1,5 @@
 import { message, SelectorKey, StateEvent, StateValue } from "@callctl/protocol";
-import type { Transport } from "../transport/transport.js";
+import type { Transport } from "../core/transport/transport.js";
 import { ControlsNotFoundError, InputDevice, type Model } from "./model.js";
 import { type SelectorRegistry, selectors } from "./selectors.js";
 

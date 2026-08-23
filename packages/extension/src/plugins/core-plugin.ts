@@ -1,7 +1,7 @@
 import { Command } from "@callctl/protocol";
+import type { Transport } from "../core/transport/transport.js";
 import { type API, ModeledAPI } from "../meet/api.js";
 import { HTMLModel, InputDevice, type Model } from "../meet/model.js";
-import type { Transport } from "../transport/transport.js";
 import type { MeetPlugin } from "./plugin.js";
 
 /**

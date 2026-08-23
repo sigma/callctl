@@ -1,11 +1,11 @@
 import type { SelectorConfig } from "@callctl/protocol";
-import { loadConfig, type MidiDevices, type TransportConfig, wsPort } from "./config.js";
+import { loadConfig, type MidiDevices, type TransportConfig, wsPort } from "./core/config.js";
+import { MidiTransport } from "./core/transport/midi-transport.js";
+import { TransportId, TransportRegistry } from "./core/transport/transport-registry.js";
+import { WSTransport } from "./core/transport/ws-transport.js";
 import { isMeetingUrl } from "./meet/location.js";
 import { selectors } from "./meet/selectors.js";
 import { loadPlugins } from "./plugins/index.js";
-import { MidiTransport } from "./transport/midi-transport.js";
-import { TransportId, TransportRegistry } from "./transport/transport-registry.js";
-import { WSTransport } from "./transport/ws-transport.js";
 import { mountWidget, NO_MIDI_INPUTS, webMidiInputSource } from "./widget/widget.js";
 
 /**

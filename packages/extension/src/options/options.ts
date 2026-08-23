@@ -1,4 +1,4 @@
-import { loadConfig, saveConfig, type TransportConfig } from "../config.js";
+import { loadConfig, saveConfig, type TransportConfig } from "../core/config.js";
 
 /**
  * Options page: edit the one-time advanced settings the in-Meet widget relies
@@ -6,7 +6,7 @@ import { loadConfig, saveConfig, type TransportConfig } from "../config.js";
  * The frequent in-call toggles (enable/disable each transport, MIDI device
  * selection) live in the widget, not here.
  *
- * Both edit the same versioned `config` envelope (see `../config.ts`), so the
+ * Both edit the same versioned `config` envelope (see `../core/config.ts`), so the
  * open page stays in sync with edits made elsewhere via `chrome.storage.onChanged`:
  * a widget (or another Options tab) writing `config` re-populates these fields.
  * Saves read-modify-write the full envelope so we never clobber the transport

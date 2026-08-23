@@ -12,7 +12,7 @@
  */
 
 import { SelectorKey } from "@callctl/protocol";
-import type { Disposer } from "../disposer.js";
+import type { Disposer } from "../core/disposer.js";
 import { type SelectorRegistry, selectors } from "./selectors.js";
 
 /** An `HTMLElement` with the ARIA reflection properties Meet sets. */

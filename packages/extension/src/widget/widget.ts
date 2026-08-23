@@ -5,9 +5,9 @@ import {
   matchesMidiDevice,
   saveConfig,
   type TransportConfig,
-} from "../config.js";
-import type { Disposer } from "../disposer.js";
-import type { TransportStatus } from "../transport/transport-registry.js";
+} from "../core/config.js";
+import type { Disposer } from "../core/disposer.js";
+import type { TransportStatus } from "../core/transport/transport-registry.js";
 import { WIDGET_STYLE } from "./style.js";
 
 /**
@@ -16,7 +16,7 @@ import { WIDGET_STYLE } from "./style.js";
  * settled in #4.
  *
  * **It writes config, nothing else.** Every control read-modify-writes the
- * versioned `config` envelope (see `../config.ts`); the content script's single
+ * versioned `config` envelope (see `../core/config.ts`); the content script's single
  * reactive `onChanged` listener (issue #10) turns those writes into live
  * `TransportRegistry` calls — enable/disable/retarget — with no Meet-tab reload.
  * So the widget never touches the registry directly: config is the one source of

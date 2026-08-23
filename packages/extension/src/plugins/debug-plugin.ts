@@ -6,7 +6,7 @@ import {
   type DebugResponse,
   message,
 } from "@callctl/protocol";
-import type { Transport } from "../transport/transport.js";
+import type { Transport } from "../core/transport/transport.js";
 import type { MeetPlugin } from "./plugin.js";
 
 /**
