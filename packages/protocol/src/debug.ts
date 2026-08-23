@@ -53,6 +53,15 @@ export interface DebugControl {
   disabled: boolean;
   /** Trimmed, truncated `textContent` — handy when there is no aria-label. */
   text: string;
+  /** Trimmed, truncated `innerText`. Unlike {@link text}, this respects CSS:
+   *  `display: none` content is excluded. The gap between the two is the only
+   *  way to distinguish "this node is absent" from "this node is present but
+   *  hidden" — a distinction Google's apps lean on heavily for screen-reader
+   *  labels, and one `textContent` alone silently collapses. */
+  visibleText: string;
+  /** Computed `font-weight`, so boldness can be read without depending on a
+   *  minified class name. */
+  fontWeight: string;
   /** Every attribute on the element — the way to find a stable selector for a
    *  control that has no aria-label (e.g. Meet's `jsname` / `data-*` hooks). */
   attrs: Record<string, string>;
