@@ -1,4 +1,5 @@
 import { bootstrap } from "./core/bootstrap.js";
+import { loadClientId } from "./core/identity.js";
 import { isMeetingUrl } from "./meet/location.js";
 import { loadMeetSelectors, saveMeetSelectors } from "./meet/selector-storage.js";
 import { selectors } from "./meet/selectors.js";
@@ -31,7 +32,16 @@ async function init(
     persistSelectors: (config) => saveMeetSelectors(local, config),
   });
 
-  const registry = await bootstrap({ local, onChanged, plugins, midi: true });
+  // Identity is per extension install (ADR 0001); the surface name is coarse
+  // and rides along for logs and UI only — routing reads the derived op set.
+  const id = await loadClientId(local);
+  const registry = await bootstrap({
+    local,
+    onChanged,
+    plugins,
+    midi: true,
+    session: () => ({ id, surface: "meet" }),
+  });
 
   // The in-Meet control widget (#13). It only ever writes the `config`
   // envelope; the reactive listener inside `bootstrap` is what turns those

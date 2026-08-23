@@ -1,5 +1,15 @@
-import type { Message } from "@callctl/protocol";
+import { type ClientHello, type Message, message, SessionEvent } from "@callctl/protocol";
 import { BaseTransport, type Retargetable } from "./transport.js";
+
+/**
+ * Everything the handshake carries *except* the capability set, which this
+ * transport derives itself.
+ *
+ * A function, not a value: the account label may resolve seconds after the page
+ * loads, so the transport re-reads it on every (re)connect and on
+ * {@link WSTransport.rehandshake}. Absent fields simply do not travel.
+ */
+export type SessionSource = () => Omit<ClientHello, "ops">;
 
 /** How long to wait before redialing after a drop/failed connect. */
 const RECONNECTION_INTERVAL_SECS = 2;
@@ -19,16 +29,24 @@ const RECONNECTION_INTERVAL_SECS = 2;
  * while keeping every installed hook and handler in place. This is the whole of
  * the dev-bridge port switch (#6) and the Options port change (#7): only *this*
  * socket blips; the content script — and thus the call — never reloads.
+ *
+ * The first frame out is always the mandatory handshake (ADR 0001). Its
+ * capability set is **derived, not declared** — literally the ops the installed
+ * plugins registered via {@link handle}, which are all in place by the time the
+ * socket opens. So there is no op→capability table to keep in step, and the set
+ * is automatically correct the moment someone adds a plugin.
  */
 export class WSTransport extends BaseTransport implements Retargetable<number> {
   #port: number;
   #ws: WebSocket | null = null;
   readonly #handlers = new Map<string, (msg: Message) => void>();
+  readonly #session: SessionSource;
   #shut = false;
 
-  constructor(port: number) {
+  constructor(port: number, session: SessionSource) {
     super();
     this.#port = port;
+    this.#session = session;
     this.#connect();
   }
 
@@ -52,6 +70,10 @@ export class WSTransport extends BaseTransport implements Retargetable<number> {
     };
 
     ws.onopen = () => {
+      // The handshake goes first, before any state: until the bridge knows what
+      // this client handles it has nowhere to route, and an un-handshaken
+      // client is refused outright.
+      this.rehandshake();
       // Re-push state on (re)connect so the LEDs start correct — this is why the
       // dev-bridge/port-change retarget is transparent: the redial fires this.
       this.refreshStatus(); // active → true
@@ -74,6 +96,18 @@ export class WSTransport extends BaseTransport implements Retargetable<number> {
       }
       handler(msg);
     };
+  }
+
+  /**
+   * (Re)send the handshake with the current capability set and session fields.
+   *
+   * Sent on every connect, and again whenever a refinable field improves — a
+   * Chat client that could not name its account at load time refines its label
+   * this way rather than reconnecting.
+   */
+  rehandshake(): void {
+    const hello: ClientHello = { ...this.#session(), ops: [...this.#handlers.keys()] };
+    this.send(message(SessionEvent.Hello, JSON.stringify(hello)));
   }
 
   /**

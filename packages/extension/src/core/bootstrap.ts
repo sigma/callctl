@@ -2,7 +2,7 @@ import { loadConfig, type MidiDevices, type TransportConfig, wsPort } from "./co
 import type { SurfacePlugin } from "./plugin.js";
 import { MidiTransport } from "./transport/midi-transport.js";
 import { TransportId, TransportRegistry } from "./transport/transport-registry.js";
-import { WSTransport } from "./transport/ws-transport.js";
+import { type SessionSource, WSTransport } from "./transport/ws-transport.js";
 
 /**
  * The surface-agnostic half of starting a content script.
@@ -25,6 +25,13 @@ export interface BootstrapOptions {
   plugins: SurfacePlugin[];
 
   /**
+   * Who this client says it is at handshake time — its install id, its coarse
+   * surface name, and any label/language it has managed to discover. Read on
+   * every (re)connect, so a field that resolves late still travels.
+   */
+  session: SessionSource;
+
+  /**
    * Bind the MIDI transport too. **Meet-only.** If both content scripts bound
    * MIDI they would both receive every CC message while sharing one global
    * plugin-CC namespace with no coordination (ADR 0002), so Chat leaves this
@@ -39,7 +46,7 @@ export interface BootstrapOptions {
  * port (the Meet widget's live dots) — never the enable/disable handles.
  */
 export async function bootstrap(options: BootstrapOptions): Promise<TransportRegistry> {
-  const { local, onChanged, plugins, midi } = options;
+  const { local, onChanged, plugins, midi, session } = options;
 
   // The port and enable-flags live in the versioned `config` envelope owned by
   // `config.ts` (#7); `loadConfig` also migrates a legacy `{ port }` install on
@@ -55,7 +62,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<TransportReg
   // `"all"`) preserve today's always-on behavior.
   const registry = new TransportRegistry(plugins);
   if (config.ws.enabled) {
-    registry.enable(TransportId.WS, () => new WSTransport(wsPort(config)));
+    registry.enable(TransportId.WS, () => new WSTransport(wsPort(config), session));
   }
   if (midi && config.midi.enabled) {
     registry.enable(TransportId.MIDI, () => new MidiTransport(config.midi.devices));
@@ -81,7 +88,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<TransportReg
 
     if (next.ws.enabled) {
       // Idempotent: turns ws on, or leaves it for the following `retarget`.
-      registry.enable(TransportId.WS, () => new WSTransport(wsPort(next)));
+      registry.enable(TransportId.WS, () => new WSTransport(wsPort(next), session));
       registry.retarget<number>(TransportId.WS, wsPort(next));
     } else {
       registry.disable(TransportId.WS);

@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import type { MidiDeviceRef } from "../config.js";
 import type { SurfacePlugin } from "../plugin.js";
 import { MidiTransport } from "./midi-transport.js";
+import type { Message, Transport } from "./transport.js";
 
 /**
  * Controllable stand-ins for the Web MIDI API — jsdom has none. We drive the
@@ -43,12 +44,12 @@ function fakeNav(access: FakeAccess): Navigator {
 }
 
 /** A plugin that registers one handler under ordinal 0 for CC controller `id`. */
-function fakePlugin(id: number, handler: (msg: unknown) => void): SurfacePlugin {
+function fakePlugin(id: number, handler: (msg: Message) => void): SurfacePlugin {
   return {
     ID: () => `plugin-${id}`,
     midiCC: () => id,
     installHooks: vi.fn(),
-    installHandlers: (t) => t.handle("op", handler as (msg: never) => void),
+    installHandlers: (t: Transport) => t.handle("op", handler),
   } as unknown as SurfacePlugin;
 }
 
