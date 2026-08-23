@@ -1,6 +1,7 @@
 import { ChatCommand, ChatEvent, type ChatRoster } from "@callctl/protocol";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { Message, Transport } from "../core/transport/transport.js";
+import { newRaisePlugin } from "./raise-plugin.js";
 import type { VisibleText } from "./roster.js";
 import { newRosterPlugin, RosterModel } from "./roster-plugin.js";
 import { ChatSelectorRegistry } from "./selectors.js";
@@ -289,14 +290,46 @@ describe("Chat selector configuration", () => {
   });
 });
 
+describe("raising the window", () => {
+  test("hands off to the service worker rather than calling windows itself", () => {
+    // `chrome.windows` is not callable from a content script; the indirection
+    // is the whole point of this plugin.
+    const raise = vi.fn();
+    const t = fakeTransport();
+    newRaisePlugin(raise).installHandlers(t.transport);
+
+    t.fire(ChatCommand.Raise);
+
+    expect(raise).toHaveBeenCalledOnce();
+  });
+
+  test("takes no arguments, so it cannot navigate", () => {
+    const raise = vi.fn();
+    const t = fakeTransport();
+    newRaisePlugin(raise).installHandlers(t.transport);
+
+    // A target would be unused API inviting use before its semantics settle;
+    // the paging key will add one additively.
+    t.fire(ChatCommand.Raise, "space/aaa");
+
+    expect(raise).toHaveBeenCalledWith();
+  });
+});
+
 describe("the Chat plugin set", () => {
   test("registers exactly the ops the handshake will advertise", () => {
     const t = install(roster([]));
+    newRaisePlugin(() => {}).installHandlers(t.transport);
     newChatSelectorsPlugin().installHandlers(t.transport);
 
     // The capability set is derived from these, so this is what routing sees.
     expect(t.ops().sort()).toEqual(
-      [ChatCommand.GetRoster, ChatCommand.GetSelectors, ChatCommand.SetSelectors].sort(),
+      [
+        ChatCommand.GetRoster,
+        ChatCommand.Raise,
+        ChatCommand.GetSelectors,
+        ChatCommand.SetSelectors,
+      ].sort(),
     );
   });
 

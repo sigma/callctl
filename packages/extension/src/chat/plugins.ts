@@ -1,5 +1,6 @@
 import type { SurfacePlugin } from "../core/plugin.js";
 import { newDebugPlugin } from "../plugins/debug-plugin.js";
+import { newRaisePlugin, type RaiseWindow } from "./raise-plugin.js";
 import { newRosterPlugin, RosterModel } from "./roster-plugin.js";
 import { newChatSelectorsPlugin, type PersistChatSelectors } from "./selectors-plugin.js";
 
@@ -15,10 +16,11 @@ import { newChatSelectorsPlugin, type PersistChatSelectors } from "./selectors-p
  * Chat selector drift through the dev bridge possible at all.
  */
 export function loadChatPlugins(
-  opts: { persistSelectors?: PersistChatSelectors; model?: RosterModel } = {},
+  opts: { persistSelectors?: PersistChatSelectors; model?: RosterModel; raise?: RaiseWindow } = {},
 ): SurfacePlugin[] {
   const plugins = [
     newRosterPlugin(opts.model ?? new RosterModel()),
+    newRaisePlugin(opts.raise),
     newChatSelectorsPlugin(opts.persistSelectors),
   ];
   if (import.meta.env.MODE !== "production") {
