@@ -1,5 +1,7 @@
 import type { AddressInfo } from "node:net";
+import { Bridge } from "@callctl/bridge";
 import {
+  type ClientId,
   Command,
   DebugCommand,
   type DebugControl,
@@ -13,7 +15,7 @@ import {
   StateEvent,
   StateValue,
 } from "@callctl/protocol";
-import { type WebSocket, WebSocketServer, WebSocket as WsClient } from "ws";
+import { WebSocket as WsClient } from "ws";
 
 export interface BridgeOptions {
   /** Port the extension dials into (the bridge listens here). */
@@ -30,6 +32,16 @@ export interface BridgeOptions {
   debugTimeoutMs?: number;
 }
 
+/** One attached client, as `/state` and `/clients` report it. */
+export interface BridgeClient {
+  id: ClientId;
+  surface: string;
+  label?: string;
+  lang?: string;
+  /** Every op it handles — the thing that decides what can be routed to it. */
+  ops: string[];
+}
+
 /** Cached view of the Meet state the extension pushes, for `/state`. */
 export interface BridgeState {
   extensionConnected: boolean;
@@ -37,28 +49,35 @@ export interface BridgeState {
   mic: "muted" | "unmuted" | "unknown";
   camera: "muted" | "unmuted" | "unknown";
   hand: "raised" | "lowered" | "unknown";
+  /** Everything attached right now. Empty when nothing is. */
+  clients: BridgeClient[];
 }
 
 const RECONNECT_MS = 2000;
 
 /**
  * The dev bridge. Two websockets:
- *  - a **server** the extension dials into (`extensionPort`), and
+ *  - a **server** clients dial into (`extensionPort`), and
  *  - an optional **client** to the real plugin (`pluginPort`).
  *
  * Normal command/state traffic is relayed verbatim between the two, so the
  * Stream Deck plugin behaves exactly as if it were talking to the extension
  * directly. On top of that, the bridge can inject {@link DebugCommand.Request}s
- * toward the extension and correlate the {@link DebugEvent.Response}s — those
- * debug frames are intercepted and never leak up to the plugin.
+ * toward a client and correlate the {@link DebugEvent.Response}s — those debug
+ * frames are intercepted and never leak up to the plugin.
+ *
+ * The client side is {@link Bridge}, shared with the Stream Deck plugin: this
+ * used to keep exactly one connection and close the previous one, which meant
+ * a Chat client and a Meet client evicted each other in a loop. Every
+ * introspection entry point therefore takes an optional client — absent means
+ * last-wins, so a single-client session behaves exactly as it always did.
  */
 export class DebugBridge {
   readonly #opts: Required<Pick<BridgeOptions, "extensionPort" | "host" | "debugTimeoutMs">> &
     BridgeOptions;
   readonly #log: (m: string) => void;
 
-  #wss: WebSocketServer | null = null;
-  #ext: WebSocket | null = null;
+  readonly #bridge: Bridge;
   #plugin: WsClient | null = null;
   #pluginShut = false;
 
@@ -82,30 +101,32 @@ export class DebugBridge {
       ...opts,
     };
     this.#log = opts.log ?? (() => {});
+    this.#bridge = new Bridge({
+      port: this.#opts.extensionPort,
+      host: this.#opts.host,
+      log: this.#log,
+    });
+    this.#bridge.onMessage((m) => this.#fromClient(m));
+    this.#bridge.onClientsChange(() => {
+      if (this.#bridge.clients.all().length === 0) {
+        this.#mic = this.#camera = "unknown";
+        this.#hand = "unknown";
+      }
+    });
   }
 
-  start(): Promise<void> {
-    const wss = new WebSocketServer({ host: this.#opts.host, port: this.#opts.extensionPort });
-    this.#wss = wss;
-    wss.on("connection", (conn) => this.#onExtension(conn));
+  async start(): Promise<void> {
+    await this.#bridge.start();
+    this.#log(
+      `bridge listening for clients on ${this.#opts.host}:${this.address?.port}` +
+        (this.#opts.pluginPort !== undefined
+          ? `, proxying plugin on :${this.#opts.pluginPort}`
+          : " (debug-only, no plugin upstream)"),
+    );
 
     if (this.#opts.pluginPort !== undefined) {
       this.#connectPlugin();
     }
-
-    return new Promise((resolve, reject) => {
-      wss.once("listening", () => {
-        this.#log(
-          `bridge listening for extension on ${this.#opts.host}:${this.#opts.extensionPort}` +
-            (this.#opts.pluginPort !== undefined
-              ? `, proxying plugin on :${this.#opts.pluginPort}`
-              : " (debug-only, no plugin upstream)"),
-        );
-        wss.on("error", (err) => this.#log(`server error: ${err.message}`));
-        resolve();
-      });
-      wss.once("error", reject);
-    });
   }
 
   close(): void {
@@ -116,58 +137,42 @@ export class DebugBridge {
     }
     this.#pending.clear();
     this.#selectorWaiters.clear();
-    this.#ext?.close();
+    this.#bridge.close();
     this.#plugin?.close();
-    this.#wss?.close();
-    this.#ext = null;
     this.#plugin = null;
-    this.#wss = null;
   }
 
-  /** The bound extension-facing address once listening, or `null`. */
+  /** The bound client-facing address once listening, or `null`. */
   get address(): AddressInfo | null {
-    const a = this.#wss?.address();
-    return a !== undefined && typeof a !== "string" ? a : null;
+    return this.#bridge.address;
+  }
+
+  /** Every attached client. The thing to read before targeting one. */
+  get clients(): BridgeClient[] {
+    return this.#bridge.clients.all().map((c) => ({
+      id: c.id,
+      surface: c.surface,
+      ...(c.label !== undefined ? { label: c.label } : {}),
+      ...(c.lang !== undefined ? { lang: c.lang } : {}),
+      ops: [...c.ops],
+    }));
   }
 
   get state(): BridgeState {
+    const clients = this.clients;
     return {
-      extensionConnected: this.#ext !== null,
+      extensionConnected: clients.length > 0,
       pluginConnected: this.#plugin !== null && this.#plugin.readyState === WsClient.OPEN,
       mic: this.#mic,
       camera: this.#camera,
       hand: this.#hand,
+      clients,
     };
   }
 
-  // --- Extension side --------------------------------------------------------
+  // --- Client side -----------------------------------------------------------
 
-  #onExtension(conn: WebSocket): void {
-    this.#log("extension connected");
-    this.#ext?.close();
-    this.#ext = conn;
-
-    conn.on("message", (raw) => this.#fromExtension(raw.toString()));
-    conn.on("close", () => {
-      if (this.#ext === conn) {
-        this.#ext = null;
-        this.#mic = this.#camera = "unknown";
-        this.#hand = "unknown";
-        this.#log("extension disconnected");
-      }
-    });
-    conn.on("error", (err) => this.#log(`extension error: ${err.message}`));
-  }
-
-  #fromExtension(raw: string): void {
-    let m: Message;
-    try {
-      m = JSON.parse(raw) as Message;
-    } catch {
-      this.#log(`ignoring non-JSON from extension: ${raw}`);
-      return;
-    }
-
+  #fromClient(m: Message): void {
     // Intercept debug responses — resolve the waiting caller, do NOT forward.
     if (m.event === DebugEvent.Response) {
       this.#resolveDebug(m.data);
@@ -182,8 +187,9 @@ export class DebugBridge {
     }
 
     this.#cacheState(m);
-    // Everything else (state pushes) goes up to the plugin, if proxying.
-    this.#toPlugin(raw);
+    // Everything else (state pushes) goes up to the plugin, if proxying. The
+    // source client rides along, so the plugin can tell whose state moved.
+    this.#toPlugin(JSON.stringify(m));
   }
 
   #cacheState(m: Message): void {
@@ -204,7 +210,7 @@ export class DebugBridge {
     this.#plugin = client;
 
     client.on("open", () => this.#log(`connected to plugin at ${url}`));
-    client.on("message", (raw) => this.#toExtension(raw.toString()));
+    client.on("message", (raw) => this.#toClient(raw.toString()));
     client.on("error", () => {}); // surfaced via close/reconnect
     client.on("close", () => {
       if (this.#plugin === client) {
@@ -222,36 +228,41 @@ export class DebugBridge {
     }
   }
 
-  #toExtension(raw: string): void {
-    if (this.#ext !== null && this.#ext.readyState === WsClient.OPEN) {
-      this.#ext.send(raw);
+  /** Relay a plugin frame down, routed by the shared registry. */
+  #toClient(raw: string): void {
+    let m: Message;
+    try {
+      m = JSON.parse(raw) as Message;
+    } catch {
+      this.#log(`ignoring non-JSON from plugin: ${raw}`);
+      return;
     }
+    this.#bridge.send(m);
   }
 
   // --- Debug + command injection ---------------------------------------------
 
-  /** Fire a raw command at the extension (e.g. `toggleHand`) as if from the plugin. */
-  sendCommand(event: string, data?: string): void {
-    if (this.#ext === null) {
-      throw new Error("no extension connected");
+  /**
+   * Fire a raw command at a client (e.g. `meet.toggleHand`) as if from the
+   * plugin. With no `client`, last-wins among whoever handles the op.
+   */
+  sendCommand(event: string, data?: string, client?: ClientId): void {
+    if (!this.#bridge.send(message(event, data, client))) {
+      throw new Error(this.#noClient(event, client));
     }
-    this.#ext.send(JSON.stringify(message(event, data)));
   }
 
-  /** Read the extension's live selector config (fires `getSelectors`). */
-  getSelectors(): Promise<MeetSelectorConfig> {
-    return this.#requestSelectors(Command.GetSelectors);
+  /** Read a client's live selector config (fires `meet.getSelectors`). */
+  getSelectors(client?: ClientId): Promise<MeetSelectorConfig> {
+    return this.#requestSelectors(Command.GetSelectors, undefined, client);
   }
 
   /** Push a partial selector override and await the merged config back. */
-  setSelectors(partial: Record<string, unknown>): Promise<MeetSelectorConfig> {
-    return this.#requestSelectors(Command.SetSelectors, JSON.stringify(partial));
+  setSelectors(partial: Record<string, unknown>, client?: ClientId): Promise<MeetSelectorConfig> {
+    return this.#requestSelectors(Command.SetSelectors, JSON.stringify(partial), client);
   }
 
-  #requestSelectors(event: string, data?: string): Promise<MeetSelectorConfig> {
-    if (this.#ext === null) {
-      return Promise.reject(new Error("no extension connected"));
-    }
+  #requestSelectors(event: string, data?: string, client?: ClientId): Promise<MeetSelectorConfig> {
     return new Promise<MeetSelectorConfig>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.#selectorWaiters.delete(waiter);
@@ -262,7 +273,11 @@ export class DebugBridge {
         resolve(config);
       };
       this.#selectorWaiters.add(waiter);
-      (this.#ext as WebSocket).send(JSON.stringify(message(event, data)));
+      if (!this.#bridge.send(message(event, data, client))) {
+        clearTimeout(timer);
+        this.#selectorWaiters.delete(waiter);
+        reject(new Error(this.#noClient(event, client)));
+      }
     });
   }
 
@@ -281,11 +296,11 @@ export class DebugBridge {
     }
   }
 
-  /** Run a debug op against the live Meet DOM and await the extension's reply. */
-  debug(op: DebugOp, arg?: string): Promise<DebugResponse> {
-    if (this.#ext === null) {
-      return Promise.reject(new Error("no extension connected"));
-    }
+  /**
+   * Run a debug op against a client's live DOM and await its reply. With no
+   * `client`, last-wins — which, with only one attached, is that one.
+   */
+  debug(op: DebugOp, arg?: string, client?: ClientId): Promise<DebugResponse> {
     const id = `d${++this.#seq}`;
     const req: DebugRequest = { id, op, arg };
 
@@ -296,9 +311,12 @@ export class DebugBridge {
       }, this.#opts.debugTimeoutMs);
 
       this.#pending.set(id, { resolve, reject, timer });
-      (this.#ext as WebSocket).send(
-        JSON.stringify(message(DebugCommand.Request, JSON.stringify(req))),
-      );
+      const sent = this.#bridge.send(message(DebugCommand.Request, JSON.stringify(req), client));
+      if (!sent) {
+        clearTimeout(timer);
+        this.#pending.delete(id);
+        reject(new Error(this.#noClient(`debug ${op}`, client)));
+      }
     });
   }
 
@@ -318,6 +336,22 @@ export class DebugBridge {
     clearTimeout(pending.timer);
     this.#pending.delete(res.id);
     pending.resolve(res);
+  }
+
+  /**
+   * Why nothing took a frame. Distinguishes "nobody is here" from "the client
+   * you named cannot do that" — the debug surface only registers in non-
+   * production extension builds, so "connected but no `debugRequest`" is a
+   * routine and otherwise baffling case.
+   */
+  #noClient(what: string, client?: ClientId): string {
+    if (this.#bridge.clients.all().length === 0) {
+      return `no extension connected (${what})`;
+    }
+    if (client !== undefined) {
+      return `client ${client} is not attached, or does not handle ${what}`;
+    }
+    return `no attached client handles ${what}`;
   }
 }
 

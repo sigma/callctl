@@ -96,16 +96,23 @@ Chrome extension ─dials :2396─▶ dev bridge ─dials :2395─▶ Stream Dec
 
 ```
 GET  /health | /state                 connection + cached mic/camera/hand state
+GET  /clients                         every attached client: id, surface, label, ops
 GET  /dump?q=<substr>                  every control (buttons/[aria-label]/[data-is-muted])
                                        with full attribute map + truncated outerHTML;
                                        optional aria-label/text filter
 GET  /query?selector=<css>            controls matching a CSS selector
 GET  /click?selector=<css>            click the first match
-GET  /command?event=<e>&data=<d>      inject a raw protocol command at the extension
-POST /command  {"event":"…","data":"…"}
-GET  /selectors                       read the extension's live selector config
+GET  /command?event=<e>&data=<d>      inject a raw protocol command at a client
+POST /command  {"event":"…","data":"…","client":"…"}
+GET  /selectors                       read a client's live selector config
 POST /selectors  {"handRaise":"…",…}  push a partial selector override (drift fix)
 ```
+
+**Targeting a client.** The bridge holds as many clients as dial in — a Meet tab
+and a Chat window are both "the extension" now — so every route that reaches one
+takes an optional `?client=<id>`. Omit it and the frame goes **last-wins**, which
+is what a single-client session has always done. `curl 'localhost:2397/clients'`
+is where you find an id.
 
 Diagnostic idioms:
 - `curl 'localhost:2397/state'`, then `curl 'localhost:2397/command?event=meet.toggleMic'`,
