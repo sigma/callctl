@@ -4,7 +4,7 @@
 > ticket [#17](https://github.com/sigma/callctl/issues/17). AFK research.
 > Sources: [W3C Web MIDI API](https://www.w3.org/TR/webmidi/) (Editor's Draft / TR),
 > cross-checked against the shipped input transport in
-> `packages/extension/src/transport/midi-transport.ts` (issue #5).
+> `packages/extension/src/core/transport/midi-transport.ts` (issue #5).
 
 ## TL;DR for the transport design
 

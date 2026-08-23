@@ -36,7 +36,10 @@ the Meet DOM. State changes push back and repaint the deck LEDs.
   lives in the **content script** (`src/content-script.ts`), NOT the service
   worker (`src/background.ts` only logs). Meet is driven by `src/meet/` (model +
   api) and `src/plugins/*` (core/hand/react/selectors, + dev-only debug).
-  Transports in `src/transport/`: `WSProtocol`, `MidiProtocol`, `MultiProtocol`.
+  Surface-neutral machinery lives in `src/core/`: `bootstrap.ts` (the shared
+  content-script startup), `plugin.ts` (`SurfacePlugin`, the interface every
+  surface implements), `config.ts`, `disposer.ts`, and `transport/`
+  (`WSTransport`, `MidiTransport`, `TransportRegistry`). See ADR 0002.
 - **`@callctl/devbridge`** — dev-only tool. A ws bridge that proxies the plugin
   and injects live Meet DOM introspection, exposed over HTTP and MCP. Used to
   hunt selector drift. Debug surface ships only in non-production extension
