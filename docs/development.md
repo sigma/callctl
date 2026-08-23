@@ -144,7 +144,7 @@ Wire protocol (rides the normal websocket):
 
 Because every DOM lookup reads the registry **fresh**, a pushed override takes
 effect on the *next command* — **no rebuild, no tab reload, no dropped call**.
-The extension also persists overrides to `chrome.storage.local` (`selectors`
+The extension also persists overrides to `chrome.storage.local` (`meet.selectors`
 key) and re-applies them on load, so a field fix survives reloads. A malformed or
 empty value is ignored (`mergeMeetSelectors`), so a bad push can never blank a
 selector out.
