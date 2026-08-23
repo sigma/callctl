@@ -17,6 +17,11 @@
 
 ## 0. Verified vs. hypothesis — read this first
 
+> ⚠️ **Superseded in part by §7.** §1–§6 were written *without* a live session. §7 records
+> real observations against a signed-in Chat tab (#112) and settles every open question
+> below. **Where the two disagree, §7 wins** — most importantly, §2.4's accessibility lead
+> points at a "Unread" span that turns out to be present on *every* row (§7.3).
+
 **The author of this note could not log into a Google account.** No live, authenticated
 Chat DOM was inspected. Every selector-level statement below is therefore explicitly
 labelled. Nothing in this document is a class name, `aria-label`, or CSS selector invented
@@ -855,6 +860,127 @@ Ordered by how much they change the design:
 8. **Chat-in-Gmail.** (§1.4) A user who reads Chat inside Gmail is on `mail.google.com` and
    this feature will not see them at all. Out of scope for #104, but should be an explicit
    non-goal in the spec rather than a silent gap.
+
+## 7. Live observations (#112) — resolved against a real session
+
+**Everything in this section is observed, not inferred.** Captured 2026-08-23 against a
+signed-in `chat.google.com` tab, driven through the dev bridge (`/query`, `/click` on
+:2397) with a debug-only content script. Roster size at the time: **16 conversations**.
+
+Where this section contradicts §1–§6, **this section wins** — those were reasoned from
+public sources without a session.
+
+### 7.1 The four questions, answered
+
+| # | Question | Answer |
+|---|---|---|
+| 1 | Stable id on a row? | **Yes** — `data-group-id` |
+| 2 | Badge vs bold separable in the DOM? | **Yes** — two distinct classes |
+| 3 | Badge a number or a dot? | **Neither** — unread is a boolean; no count exists |
+| 4 | Roster virtualised? | **No** at N=16 |
+
+### 7.2 Rows and identity
+
+A conversation row is `[data-group-id][role=listitem]`. It carries:
+
+```html
+<span role="listitem" class="IL9EXe PL5Wwe dHI9xe rcdhB WD3P7" jsname="CmABtb"
+      id="dm/3aSmhKAAAAE/SCcFR"
+      data-group-id="dm/3aSmhKAAAAE"
+      data-starred="true"
+      data-display-timestamp="1787230544809">
+```
+
+- **`data-group-id` is the stable id** and is exactly the REST resource name modulo
+  pluralisation: `space/AAQAr0bt0mg` ↔ `spaces/AAQAr0bt0mg`, `dm/<id>` for direct messages.
+  It also appears as `data-hovercard-id` on an inner node, and as the `id` prefix
+  (`<group-id>/SCcFR`).
+- `data-starred` is **pinned**, `data-display-timestamp` is epoch-ms for ordering.
+- **Non-conversation rows have no `data-group-id`** — suggested contacts, birthday cards and
+  the "Ask Gemini" entry are all `role="listitem"` too. `data-group-id` is therefore the
+  correct filter; a bare `role=listitem` query returns 28 nodes for 16 conversations.
+- Display name and emoji avatar are inside the row (`img[data-emoji]` for space emoji).
+
+### 7.3 Unread — the discriminator, and a trap
+
+Two mutually-exclusive classes on the **row**:
+
+| Class | State |
+|---|---|
+| `H7du2` | unread **and notifying** — what the deck key should count |
+| `mznwRb` | unread but **muted** — bold-only, not notifying |
+
+Established by controlled A/B, not correlation:
+
+| Session state | `H7du2` | `mznwRb` |
+|---|---|---|
+| 1 conversation unread, unmuted | 1 (the right one) | 0 |
+| everything marked read | **0** | 0 |
+| same conversation unread **+ muted** | 0 | 1 (the right one) |
+| same conversation unread, **unmuted again** | 1 (the right one) | 0 |
+
+Only the mute setting changed between the last two rows, so the split is causal.
+
+> 🔴 **Trap: `<span class="mL1cqe"> Unread </span>` is a red herring.** It is present on
+> **all 16 rows** regardless of state — including read conversations and the conversation
+> currently open on screen. It is static markup that CSS shows/hides. §2.4's accessibility
+> lead points straight at it, and a scraper keying off the accessible "Unread" text reports
+> **every** conversation as unread. Key off the row class instead.
+
+Other row classes seen, none of them unread-related: `IL9EXe PL5Wwe dHI9xe` (all 16),
+`rcdhB` (11) / `WD3P7` (5) — a partition unrelated to unread, `qs41qe` — the
+**currently-open** conversation.
+
+### 7.4 There is no unread count
+
+This confirms §2's strong negative *at the DOM level*, not just the API level:
+
+- **No badge element exists in the roster.** Unread is boolean per conversation.
+- The four numeric badges found (`.j3630e` inside `.YK45Id`, `jsname="EeSSIf"`) are **emoji
+  reaction counts** in the open conversation — unrelated, and a trap for a naive
+  "find the number near a row" heuristic.
+- **`document.title` carries no count** — it was `"Global Announcements - Chat"` with
+  unread conversations present. The title-scraping approach is dead on its own terms.
+
+So the deck key can show **the number of unread-and-notifying conversations**
+(`H7du2` row count) — never a message count.
+
+### 7.5 Reachability and virtualisation
+
+- **Top frame.** 344 dumpable controls, 28 `role=listitem`, 26 `role=list` all present in
+  the top frame. 5 iframes exist but the roster is not in them; `all_frames` was **false**
+  for every observation here. §1.5's cautious "top-frame or same-origin-nested" resolves to
+  **top frame**.
+- **Not virtualised at N=16.** All 16 rows stayed in the DOM when the window was shrunk so
+  the list had to scroll. ⚠️ Untested above 16 conversations — virtualisation could still
+  appear on a large roster, and that remains the main completeness risk.
+
+### 7.6 The unread filter changes what is in the DOM
+
+Chat's own per-section **"Toggle unread filter"** (`[aria-label='Toggle unread filter']`,
+state on `aria-checked`, one per section — Chat / Spaces / Apps / custom) was **on** for two
+sections at the start of this session. While on, **only unread conversations are rendered**:
+the roster showed 9 rows, all unread; toggling both off revealed 16.
+
+A scraper must either account for this filter or it will systematically undercount total
+conversations. It does **not** distort the `H7du2` count itself.
+
+### 7.7 Blockers hit while getting here — all extension-side
+
+- 🔴 **The Meet plugins throw on a non-Meet page.** Reusing `content-script.ts` on
+  `chat.google.com` dies with `Uncaught x: No mute/unmute button found for microphone` from
+  `newCorePlugin()`, before the websocket is dialled. §5.3 predicted a harmless no-op; it is
+  a **throw**, and it silently kills the whole content script. A second surface cannot reuse
+  `loadPlugins()` as it stands — direct input to #108.
+- 🟡 **crxjs collapses `web_accessible_resources`** when two `content_scripts` entries share
+  one script file: only the *last* entry's `matches` survives, breaking the other surface.
+  Giving each surface its own entry script fixes it.
+- 🟢 **CSP is not a blocker.** `chat.google.com` sends `script-src 'nonce-…' 'unsafe-inline'`
+  with **no `'strict-dynamic'`**, where `meet.google.com` has `'strict-dynamic' https: http:`.
+  This looked like it would block the crxjs loader's dynamic `import()` of an extension
+  chunk — it does not. The loader injected and ran on Chat. Recorded because the asymmetry is
+  real and may matter for other injection strategies, but it did not bite here.
+- The dev bridge's single-client eviction (§5.2) is real: Meet tabs must be closed.
 
 ## Sources
 
