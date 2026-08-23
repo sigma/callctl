@@ -1,7 +1,7 @@
 import { DEFAULT_SELECTORS, SelectorKey } from "@callctl/protocol";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import type { Message } from "../core/transport/transport.js";
 import { newSelectorsPlugin } from "../plugins/selectors-plugin.js";
-import type { Message } from "../transport/transport.js";
 import { ModeledAPI } from "./api.js";
 import { HTMLModel } from "./model.js";
 import { SelectorRegistry } from "./selectors.js";

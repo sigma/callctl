@@ -1,4 +1,4 @@
-import type { Transport } from "../transport/transport.js";
+import type { Transport } from "../core/transport/transport.js";
 
 /**
  * A remote-control capability that installs itself onto a {@link Transport}.

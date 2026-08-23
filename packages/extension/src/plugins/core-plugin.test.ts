@@ -1,6 +1,6 @@
 import type { Message } from "@callctl/protocol";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { BaseTransport } from "../transport/transport.js";
+import { BaseTransport } from "../core/transport/transport.js";
 import { newCorePlugin } from "./core-plugin.js";
 
 /**

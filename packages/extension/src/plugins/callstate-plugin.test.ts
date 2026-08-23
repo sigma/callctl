@@ -1,7 +1,7 @@
 import { type Message, StateEvent } from "@callctl/protocol";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import type { Transport } from "../core/transport/transport.js";
 import { HTMLModel } from "../meet/model.js";
-import type { Transport } from "../transport/transport.js";
 import { type CallStateModel, HTMLCallStateModel, ModeledCallState } from "./callstate-plugin.js";
 
 /** A transport that only records what it was asked to send. */

@@ -1,6 +1,6 @@
 import type { Message } from "@callctl/protocol";
 import { describe, expect, test, vi } from "vitest";
-import type { MeetPlugin } from "../plugins/plugin.js";
+import type { MeetPlugin } from "../../plugins/plugin.js";
 import { BaseTransport, type Retargetable } from "./transport.js";
 import { TransportRegistry } from "./transport-registry.js";
 

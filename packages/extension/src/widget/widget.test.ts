@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "vitest";
-import { defaultConfig, type MidiDeviceRef, type TransportConfig } from "../config.js";
-import type { TransportStatus } from "../transport/transport-registry.js";
+import { defaultConfig, type MidiDeviceRef, type TransportConfig } from "../core/config.js";
+import type { TransportStatus } from "../core/transport/transport-registry.js";
 import {
   type MidiInputInfo,
   type MidiInputSource,

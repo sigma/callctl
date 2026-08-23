@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { defaultConfig, type TransportConfig } from "../config.js";
+import { defaultConfig, type TransportConfig } from "../core/config.js";
 
 /**
  * Options page against a jsdom form and an in-memory `chrome.storage.local`.

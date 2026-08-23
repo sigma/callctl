@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
+import type { MeetPlugin } from "../../plugins/plugin.js";
 import type { MidiDeviceRef } from "../config.js";
-import type { MeetPlugin } from "../plugins/plugin.js";
 import { MidiTransport } from "./midi-transport.js";
 
 /**

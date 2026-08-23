@@ -1,5 +1,5 @@
+import type { MeetPlugin } from "../../plugins/plugin.js";
 import type { Disposer } from "../disposer.js";
-import type { MeetPlugin } from "../plugins/plugin.js";
 import type { Retargetable, Transport } from "./transport.js";
 
 /**

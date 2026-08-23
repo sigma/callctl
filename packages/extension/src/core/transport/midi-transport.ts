@@ -1,6 +1,6 @@
 import type { Message } from "@callctl/protocol";
+import type { MeetPlugin } from "../../plugins/plugin.js";
 import { type MidiDevices, matchesMidiDevice } from "../config.js";
-import type { MeetPlugin } from "../plugins/plugin.js";
 import { BaseTransport, type Retargetable } from "./transport.js";
 
 /**

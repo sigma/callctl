@@ -1,6 +1,6 @@
 import type { Message } from "@callctl/protocol";
+import type { MeetPlugin } from "../../plugins/plugin.js";
 import type { Disposer } from "../disposer.js";
-import type { MeetPlugin } from "../plugins/plugin.js";
 
 export type { Message };
 

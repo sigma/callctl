@@ -1,8 +1,8 @@
 import { Command, message, SelectorKey, StateEvent, StateValue } from "@callctl/protocol";
-import type { Disposer } from "../disposer.js";
+import type { Disposer } from "../core/disposer.js";
+import type { Transport } from "../core/transport/transport.js";
 import { ControlsNotFoundError, HTMLModel, type UIElement } from "../meet/model.js";
 import { type SelectorRegistry, selectors } from "../meet/selectors.js";
-import type { Transport } from "../transport/transport.js";
 import type { MeetPlugin } from "./plugin.js";
 
 /**
