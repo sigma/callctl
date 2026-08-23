@@ -166,3 +166,42 @@ export function resolveFeed(global: GlobalSettings, feedId: string): NamedFeed |
   if (feedId === "") return undefined;
   return global.feeds.find((f) => f.id === feedId);
 }
+
+/**
+ * Per-key settings for the Chat unread key.
+ *
+ * `clientId` empty means **any client with the Chat capability**, so the
+ * single-account case is zero-configuration: install, add a key, done. The
+ * two-account case is one selection per key, made in the Property Inspector —
+ * deliberately not auto-assigned by connection order, which depends on which
+ * window opened first and would silently swap work and personal between
+ * sessions.
+ */
+export interface ChatUnreadSettings {
+  /** Which Chat client this key follows. Empty ⇒ any capable client. */
+  clientId: string;
+  /** User override of the derived account label. Empty ⇒ derive it. */
+  label: string;
+  /**
+   * The installed Chat app's id, for the launch-when-nothing-is-attached press.
+   *
+   * **Configuration, not computed**: the documented a–p SHA-256 derivation over
+   * Chat's served manifest id yields a *different* value from the installed
+   * app's actual id. Read it from the app's own metadata or
+   * `chrome://web-app-internals`. Empty ⇒ fall back to opening a tab.
+   */
+  appId: string;
+  /** Chrome profile directory for that launch, so the right account opens. */
+  profile: string;
+}
+
+/** Coerce raw per-key Chat settings. A fresh key is unbound and underived. */
+export function parseChatUnreadSettings(raw: unknown): ChatUnreadSettings {
+  const rec = isRecord(raw) ? raw : {};
+  return {
+    clientId: str(rec.clientId),
+    label: str(rec.label),
+    appId: str(rec.appId),
+    profile: str(rec.profile),
+  };
+}
