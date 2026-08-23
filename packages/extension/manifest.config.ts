@@ -1,7 +1,7 @@
 import { defineManifest } from "@crxjs/vite-plugin";
 
 /**
- * MV3 manifest for the Meet driver extension.
+ * MV3 manifest for the callctl extension.
  *
  * Ported from the legacy MV2 `public/manifest.json`. The key change from MV2 is
  * cosmetic here rather than structural: the functional bridge already lived in
@@ -40,11 +40,23 @@ export default defineManifest({
     type: "module",
   },
 
+  // One entry per surface, each with its **own** script file. Sharing one file
+  // between two entries makes crxjs collapse `web_accessible_resources` down to
+  // the last entry's `matches`, silently breaking the other surface (ADR 0002).
   content_scripts: [
     {
       matches: ["https://meet.google.com/*"],
       js: ["src/content-script.ts"],
       run_at: "document_idle",
+    },
+    {
+      matches: ["https://chat.google.com/*"],
+      js: ["src/chat-content-script.ts"],
+      run_at: "document_idle",
+      // The roster is in the top frame. Chat sends X-Frame-Options: SAMEORIGIN
+      // and does frame ogs/accounts/myaccount, but the roster is in none of
+      // them — so one frame, one host permission.
+      all_frames: false,
     },
   ],
 
@@ -54,5 +66,5 @@ export default defineManifest({
   },
 
   permissions: ["storage"],
-  host_permissions: ["https://meet.google.com/*"],
+  host_permissions: ["https://meet.google.com/*", "https://chat.google.com/*"],
 });
