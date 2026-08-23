@@ -8,8 +8,26 @@ import {
 } from "@elgato/streamdeck";
 
 import { type ChatKeyFace, renderChatKeySvg } from "../chat/render.js";
+import { type AppTarget, CHAT_URL } from "../open/app-open.js";
 import type { ChatRemote } from "../remote/chat-remote.js";
 import { type ChatUnreadSettings, parseChatUnreadSettings } from "../settings.js";
+
+/** Injectable side-effects, kept out of the class so it stays vitest-testable. */
+export interface ChatUnreadDeps {
+  /**
+   * Launch the installed Chat app in a configured profile — the plugin wires
+   * `openChatApp` (`execFile`, no shell, and deliberately no `-n`). Rejects when
+   * there is nothing to target or the launcher fails.
+   */
+  openApp?: (target: AppTarget) => Promise<void>;
+  /**
+   * Host-delegated URL open — the plugin wires `streamDeck.system.openUrl`. The
+   * last resort when no profile is configured to launch into.
+   */
+  openUrl?: (url: string) => Promise<void>;
+  /** Structured log sink; the plugin wires `streamDeck.logger`. */
+  log?: (message: string) => void;
+}
 
 /**
  * Wrap an SVG document as a base64 `data:` URI for `KeyAction.setImage`. The SDK
@@ -43,12 +61,14 @@ interface KeyEntry {
  */
 export class ChatUnreadAction extends SingletonAction {
   readonly #remote: ChatRemote;
+  readonly #deps: ChatUnreadDeps;
   readonly #keys = new Map<string, KeyEntry>();
 
-  constructor(uuid: string, remote: ChatRemote) {
+  constructor(uuid: string, remote: ChatRemote, deps: ChatUnreadDeps = {}) {
     super();
     (this as { manifestId: string }).manifestId = uuid;
     this.#remote = remote;
+    this.#deps = deps;
 
     // Repaint whenever a client attaches, detaches, or pushes a new roster.
     remote.onChange(() => this.refreshAll());
@@ -70,17 +90,43 @@ export class ChatUnreadAction extends SingletonAction {
   }
 
   /**
-   * Press brings the Chat window to the front.
+   * Press brings the Chat window to the front. **A dark key is never a dead
+   * key**, so the two tiers cover both states the face can be in.
    *
-   * With the bound client attached, the plugin sends `chat.raise` to **that**
-   * client, so with two Chat windows open the right one comes forward.
+   * Tier 1 — the bound client is attached: send `chat.raise` to **that** client,
+   * so with two Chat windows open the right one comes forward.
+   *
+   * Tier 2 — nothing attached: launch the installed app ourselves, which is also
+   * what fixes a key that is bound-but-absent.
    */
   override onKeyDown(ev: KeyDownEvent): void {
     const entry = this.#keys.get(ev.action.id);
     if (entry === undefined) {
       return;
     }
-    this.#remote.raise(entry.settings.clientId);
+    if (this.#remote.raise(entry.settings.clientId)) {
+      return;
+    }
+    void this.#launch(entry.settings);
+  }
+
+  /**
+   * Tier 2. Targets the installed app by id in the configured profile, which is
+   * a genuine focus rather than a second window. Anything that stops that —
+   * Chat not installed as an app, no profile configured, a launcher failure —
+   * degrades to a host-delegated tab rather than failing silently.
+   */
+  async #launch(settings: ChatUnreadSettings): Promise<void> {
+    const { openApp, openUrl, log } = this.#deps;
+    if (openApp !== undefined) {
+      try {
+        await openApp({ profile: settings.profile, appId: settings.appId });
+        return;
+      } catch (err) {
+        log?.(`chat app launch failed, opening a tab instead: ${(err as Error).message}`);
+      }
+    }
+    await openUrl?.(CHAT_URL);
   }
 
   override onDidReceiveSettings(ev: DidReceiveSettingsEvent): void {

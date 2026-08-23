@@ -14,7 +14,7 @@ import { ChatUnreadAction } from "./chat-unread-action.js";
 
 /** A fake SDK KeyAction capturing setImage. */
 function fakeKey(id: string) {
-  return { id, isKey: () => true, setImage: vi.fn(async () => {}) };
+  return { id, isKey: () => true, setImage: vi.fn(async (_image: string) => {}) };
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: fake SDK events are structurally typed for the handlers.
@@ -89,7 +89,7 @@ function fakeRemote(initial: Record<string, ChatConversation[] | null> = {}) {
 
 /** The SVG a key was last asked to render, decoded back out of the data URI. */
 function lastRendered(key: ReturnType<typeof fakeKey>): string {
-  const uri = key.setImage.mock.calls.at(-1)?.[0] as unknown as string;
+  const uri = key.setImage.mock.calls.at(-1)?.[0] ?? "";
   return Buffer.from(uri.replace("data:image/svg+xml;base64,", ""), "base64").toString("utf8");
 }
 
@@ -233,6 +233,67 @@ describe("ChatUnreadAction", () => {
 });
 
 describe("pressing the key", () => {
+  it("launches the app when nothing is attached, rather than doing nothing", async () => {
+    const f = fakeRemote({});
+    (f.remote.raise as ReturnType<typeof vi.fn>).mockReturnValue(false);
+    const openApp = vi.fn(async () => {});
+    const openUrl = vi.fn(async () => {});
+    const action = new ChatUnreadAction("uuid", f.remote, { openApp, openUrl });
+    const key = fakeKey("k1");
+    action.onWillAppear(appearEv(key, { appId: "abc", profile: "Profile 1" }));
+
+    action.onKeyDown(keyDownEv(key));
+    await Promise.resolve();
+
+    // A dark key is never a dead key.
+    expect(openApp).toHaveBeenCalledWith({ appId: "abc", profile: "Profile 1" });
+    expect(openUrl).not.toHaveBeenCalled();
+  });
+
+  it("opens a tab when the app launch is not possible", async () => {
+    const f = fakeRemote({});
+    (f.remote.raise as ReturnType<typeof vi.fn>).mockReturnValue(false);
+    const openApp = vi.fn(async () => {
+      throw new Error("not installed as an app");
+    });
+    const openUrl = vi.fn(async () => {});
+    const action = new ChatUnreadAction("uuid", f.remote, { openApp, openUrl });
+    const key = fakeKey("k1");
+    action.onWillAppear(appearEv(key, {}));
+
+    action.onKeyDown(keyDownEv(key));
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(openUrl).toHaveBeenCalledWith("https://chat.google.com");
+  });
+
+  it("a key bound to an absent client launches, rather than raising someone else", async () => {
+    const f = fakeRemote({ other: [unread("a")] });
+    (f.remote.raise as ReturnType<typeof vi.fn>).mockReturnValue(false);
+    const openApp = vi.fn(async () => {});
+    const action = new ChatUnreadAction("uuid", f.remote, { openApp });
+    const key = fakeKey("k1");
+    action.onWillAppear(appearEv(key, { clientId: "mine", profile: "Work" }));
+
+    action.onKeyDown(keyDownEv(key));
+    await Promise.resolve();
+
+    expect(openApp).toHaveBeenCalledWith({ appId: "", profile: "Work" });
+  });
+
+  it("does not launch when the raise landed", async () => {
+    const f = fakeRemote({ c1: [] });
+    const openApp = vi.fn(async () => {});
+    const action = new ChatUnreadAction("uuid", f.remote, { openApp });
+    const key = fakeKey("k1");
+    action.onWillAppear(appearEv(key, {}));
+
+    action.onKeyDown(keyDownEv(key));
+    await Promise.resolve();
+
+    expect(openApp).not.toHaveBeenCalled();
+  });
+
   it("raises the bound client's window, not another's", () => {
     const f = fakeRemote({ work: [unread("a")], personal: [] });
     const action = new ChatUnreadAction("uuid", f.remote);

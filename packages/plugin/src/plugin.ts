@@ -5,6 +5,7 @@ import streamDeck from "@elgato/streamdeck";
 import { buildActions } from "./actions/index.js";
 import { CalendarService } from "./calendar/service.js";
 import { handlePiTestMessage } from "./calendar/test-feed.js";
+import { type AppTarget, openChatApp } from "./open/app-open.js";
 import { openWithProfile } from "./open/profile-open.js";
 import { ChatRemote } from "./remote/chat-remote.js";
 import { MeetRemote } from "./remote/meet-remote.js";
@@ -34,7 +35,16 @@ const nextMeetingDeps = {
   log: (message: string) => streamDeck.logger.info(message),
 };
 
-for (const action of buildActions(remote, calendar, nextMeetingDeps, chat)) {
+// Tier-2 Chat press: launch the installed app in the configured profile. This
+// path deliberately does NOT go through `openWithProfile`, which passes `-n`
+// (a forced new instance) — wrong for a raise-the-window press.
+const chatDeps = {
+  openApp: (target: AppTarget) => openChatApp(target),
+  openUrl: (url: string) => streamDeck.system.openUrl(url),
+  log,
+};
+
+for (const action of buildActions(remote, calendar, nextMeetingDeps, chat, chatDeps)) {
   streamDeck.actions.registerAction(action);
 }
 
