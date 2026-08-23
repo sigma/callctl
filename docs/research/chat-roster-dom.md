@@ -17,10 +17,15 @@
 
 ## 0. Verified vs. hypothesis — read this first
 
-> ⚠️ **Superseded in part by §7.** §1–§6 were written *without* a live session. §7 records
-> real observations against a signed-in Chat tab (#112) and settles every open question
-> below. **Where the two disagree, §7 wins** — most importantly, §2.4's accessibility lead
-> points at a "Unread" span that turns out to be present on *every* row (§7.3).
+> ⚠️ **Superseded in part by §7 and §8.** §1–§6 were written *without* a live session.
+> §7 records real observations against a signed-in Chat tab (#112) and settles every open
+> question below; §8 (#113) then replaces §7's generated class names with durable
+> text-based signals **and corrects §7.4** — a per-conversation count element does exist.
+>
+> **Read §8 first. Where sections disagree, the later one wins.** Two traps in particular:
+> §2.4's accessibility lead points at an "Unread" span present on *every* row, readable
+> only via `innerText` (§8.1); and §7.4's "no count exists" was an artefact of searching
+> while everything was read (§8.4).
 
 **The author of this note could not log into a Google account.** No live, authenticated
 Chat DOM was inspected. Every selector-level statement below is therefore explicitly
@@ -981,6 +986,95 @@ conversations. It does **not** distort the `H7du2` count itself.
   chunk — it does not. The loader injected and ran on Chat. Recorded because the asymmetry is
   real and may matter for other injection strategies, but it did not bite here.
 - The dev bridge's single-client eviction (§5.2) is real: Meet tabs must be closed.
+
+## 8. Semantic signals, free of generated class names (#113)
+
+§7 identified the unread states by minified class (`H7du2`, `mznwRb`). Those are
+regenerated per Google deploy and are the least durable thing in this note. This section
+replaces them with **text signals**, verified against the same live session.
+
+### 8.1 The trick: `innerText`, not `textContent`
+
+`DebugPlugin` originally reported `textContent`, which **includes `display: none` text**.
+That is why §7.3 concluded the `Unread` span was meaningless — it was present on all 16
+rows. `innerText` is layout-aware and reports only what is rendered. Re-reading the same
+rows through `innerText` makes the state visible directly.
+
+> ⚠️ Read `innerText` **on the row**, not on the inner span. `innerText` on an element
+> that is itself `display: none` falls back to `textContent` — querying the span directly
+> still returns `"Unread"` for all 16 rows.
+
+### 8.2 The three signals
+
+Read the row's `innerText`:
+
+| Token rendered | Meaning | Equivalent class (§7) |
+|---|---|---|
+| `Unread` | unread **and notifying** — what the key counts | `H7du2` |
+| `Muted,` | muted | `mznwRb` |
+| `N Notification` | unread, muted or not | — |
+
+Verified on a session with three deliberately-arranged states:
+
+| Conversation | Class | `Unread` | `Muted` | notif token |
+|---|---|---|---|---|
+| Product delivery (unread, unmuted) | `H7du2` | ✅ | ❌ | `1 Notification` |
+| Business & Finance (unread, unmuted) | `H7du2` | ✅ | ❌ | `1 Notification` |
+| Onboarding Arborians (unread, **muted**) | `mznwRb` | ❌ | ✅ | `1 Notification` |
+| the other 13 (read) | — | ❌ | ❌ | — |
+
+The text signals reproduce the class partition **exactly**. Counting rows whose `innerText`
+contains `Unread` is equivalent to counting `.H7du2`, with no generated selector.
+
+### 8.3 What does not work
+
+- **`font-weight` is `400` on every row**, unread or not. Boldness lives on an inner node,
+  so a row-level computed-style check is not a discriminator. CSSOM introspection (option 2
+  in #113) was not needed and was not pursued.
+- **The `Unread` span's own class (`mL1cqe`) and the notification span's (`cPjwNc`) are
+  equally generated** — the point is that neither is needed. Locate them by rendered text.
+
+### 8.4 🔴 Correction to §7.4: a per-conversation count element *does* exist
+
+§7.4 stated no badge element exists in the roster. **That was wrong, and the reason matters:
+at the time of that search every conversation was read**, so no count was rendered — an
+absent *state* was misread as an absent *element*.
+
+What is actually there, on the two-to-three unread rows:
+
+```html
+<span class="SaMfhe m9MHid" aria-hidden="true">1</span>   <!-- the visual badge -->
+<span class="cPjwNc" role="presentation">1 Notification</span>  <!-- the text form -->
+```
+
+`.cPjwNc` is present on 14 of 16 rows but carries text only on unread ones — static markup
+gated by CSS, exactly like the `Unread` span.
+
+**It still does not appear to be a message count.** Every observation reads `1 Notification`,
+including a conversation where the *oldest* message was deliberately marked unread and
+several messages should be outstanding. Three unread conversations, three `1`s. Best current
+reading: a per-conversation flag that happens to render a numeral.
+
+So the design decision is unchanged — **the key counts conversations, not messages** — but
+the justification is now "the count is not trustworthy as a message count", not "no count
+exists". ⚠️ Untested against genuinely-multiple *incoming* messages; if a real `N > 1` is
+ever observed, revisit.
+
+### 8.5 🟡 Residual risk: these tokens are English
+
+`Unread`, `Muted,` and `N Notification` are **localised UI strings**. A non-English Chat
+would render `Non lus` / `Non lu,` etc., and every signal here would silently return zero —
+the same failure mode as a renamed class, just triggered by locale instead of a deploy.
+
+Mitigations to weigh when specifying (#110):
+- Keep the tokens in `SelectorConfig` so they are overridable over the wire, exactly like
+  Meet's aria-labels — this is what that machinery is for.
+- Read the UI locale (`document.documentElement.lang`) and carry a small token table.
+- Use the class as a **cross-check**, not a primary: if the text signal returns zero rows
+  but a class-based probe returns some, the tokens are stale — a self-diagnosing scraper.
+
+The honest summary: the text signals are **more durable than the classes and independent of
+Google's build**, but not absolutely stable. Both belong in config.
 
 ## Sources
 
