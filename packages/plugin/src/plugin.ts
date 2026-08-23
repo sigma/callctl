@@ -1,14 +1,24 @@
+import { Bridge } from "@callctl/bridge";
+import { DEFAULT_PORT } from "@callctl/protocol";
 import streamDeck from "@elgato/streamdeck";
 
 import { buildActions } from "./actions/index.js";
 import { CalendarService } from "./calendar/service.js";
 import { handlePiTestMessage } from "./calendar/test-feed.js";
 import { openWithProfile } from "./open/profile-open.js";
+import { ChatRemote } from "./remote/chat-remote.js";
 import { MeetRemote } from "./remote/meet-remote.js";
 import { type BrowserId, parseGlobalSettings } from "./settings.js";
 
-// The plugin hosts the local websocket server; the Chrome extension dials in.
-const remote = new MeetRemote({ log: (m) => streamDeck.logger.info(m) });
+// The plugin hosts the local websocket server; the Chrome extension's content
+// scripts dial in as clients. **One bridge, many clients** — a Meet tab and a
+// Chat window coexist rather than evicting each other (ADR 0001), so each
+// surface's remote is a consumer of the same server rather than a server of
+// its own.
+const log = (m: string) => streamDeck.logger.info(m);
+const bridge = new Bridge({ port: DEFAULT_PORT, log });
+const remote = new MeetRemote({ bridge, log });
+const chat = new ChatRemote({ bridge, log });
 
 // The Next-Meeting feed engine (§9): one shared cache registry across every key.
 const calendar = new CalendarService();
@@ -24,7 +34,7 @@ const nextMeetingDeps = {
   log: (message: string) => streamDeck.logger.info(message),
 };
 
-for (const action of buildActions(remote, calendar, nextMeetingDeps)) {
+for (const action of buildActions(remote, calendar, nextMeetingDeps, chat)) {
   streamDeck.actions.registerAction(action);
 }
 
@@ -52,7 +62,7 @@ streamDeck.ui.onSendToPlugin(async (ev) => {
 
 streamDeck.connect();
 
-remote.start().catch((err) => {
+bridge.start().catch((err: Error) => {
   streamDeck.logger.error(`failed to start remote server: ${err.message}`);
 });
 
