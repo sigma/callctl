@@ -1,3 +1,4 @@
+import { accountLabel, type ChatAccount, observeAccount, readAccount } from "./chat/account.js";
 import { loadChatPlugins } from "./chat/plugins.js";
 import { loadChatSelectors, saveChatSelectors } from "./chat/selector-storage.js";
 import { chatSelectors } from "./chat/selectors.js";
@@ -37,7 +38,13 @@ async function init(
   });
 
   const id = await loadClientId(local);
-  await bootstrap({
+
+  // Which account this window is. It may not be knowable yet — the anchor was
+  // observed a few seconds after load, and whether it exists at `document_idle`
+  // was never measured — so read what there is now and refine below.
+  let account: ChatAccount = readAccount(document, chatSelectors.all());
+
+  const registry = await bootstrap({
     local,
     onChanged,
     plugins,
@@ -45,12 +52,25 @@ async function init(
     session: () => ({
       id,
       surface: "chat",
+      // The **full** domain travels; the plugin strips the TLD for display.
+      label: accountLabel(account, id),
       // Chat's unread markers are English strings, so a non-English UI would
       // silently report zero. Reporting the language makes that diagnosable
       // instead of mysterious.
       lang: document.documentElement.lang || undefined,
     }),
   });
+
+  // Refine rather than reconnect: the handshake's label is refinable by design,
+  // so a late-resolving account improves the binding in place.
+  observeAccount(
+    document,
+    () => chatSelectors.all(),
+    (next) => {
+      account = next;
+      registry.refreshSession();
+    },
+  );
 }
 
 function ready(doc: Document, callback: () => void): void {

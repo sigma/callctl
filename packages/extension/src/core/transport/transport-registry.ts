@@ -101,6 +101,20 @@ export class TransportRegistry {
     transport?.retarget?.(config);
   }
 
+  /**
+   * Ask every live transport that carries a session to re-send its handshake.
+   *
+   * The handshake's `label` and `lang` are refinable: a Chat client may not know
+   * which account it is until the page finishes settling, and refining that must
+   * not cost a reconnect. Duck-typed like {@link retarget} — a transport with no
+   * session (MIDI) simply has nothing to re-send.
+   */
+  refreshSession(): void {
+    for (const transport of this.#live.values()) {
+      (transport as Partial<{ rehandshake: () => void }>).rehandshake?.();
+    }
+  }
+
   isEnabled(id: string): boolean {
     return this.#live.has(id);
   }
