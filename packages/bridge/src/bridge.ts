@@ -1,7 +1,7 @@
 import type { AddressInfo } from "node:net";
-import { type ClientId, type Message, parseHello, SessionEvent } from "@callctl/protocol";
+import { type Message, parseHello, SessionEvent } from "@callctl/protocol";
 import { type WebSocket, WebSocketServer } from "ws";
-import { ClientRegistry, type ConnectedClient } from "./client-registry.js";
+import { ClientRegistry, type ConnectedClient, type ConnectionKey } from "./client-registry.js";
 
 export interface BridgeOptions {
   /** Port to listen on. */
@@ -67,8 +67,8 @@ export class Bridge {
 
   /** Stop listening and drop every client. */
   close(): void {
-    for (const client of this.clients.all()) {
-      this.clients.detach(client.id);
+    for (const key of this.clients.keys()) {
+      this.clients.detach(key);
     }
     for (const socket of this.#wss?.clients ?? []) {
       socket.close();
@@ -115,12 +115,16 @@ export class Bridge {
   }
 
   #onConnection(conn: WebSocket): void {
-    let id: ClientId | null = null;
+    // One key per socket. The registry is keyed by connection, so two clients
+    // sharing an id — a second Meet tab, or the other surface of the same
+    // extension install — coexist instead of overwriting each other.
+    const key: ConnectionKey = Symbol("client-connection");
+    let attached = false;
 
     // A socket that never handshakes is a stale client, not a slow one. Refuse
     // it out loud rather than letting it sit there attached-but-unroutable.
     const timer = setTimeout(() => {
-      if (id === null) {
+      if (!attached) {
         this.#refuse(conn, "sent no handshake");
       }
     }, this.#handshakeTimeoutMs);
@@ -142,8 +146,8 @@ export class Bridge {
           return;
         }
         clearTimeout(timer);
-        id = hello.id;
-        const client = this.clients.attach(hello, (out) => conn.send(JSON.stringify(out)));
+        attached = true;
+        const client = this.clients.attach(key, hello, (out) => conn.send(JSON.stringify(out)));
         this.#log(
           `client attached: ${client.surface} ${client.id}` +
             `${client.label !== undefined ? ` (${client.label})` : ""}` +
@@ -154,13 +158,13 @@ export class Bridge {
 
       // No handshake, no routing: we have no idea what this client can do, and
       // guessing would mean a permanent second semantics to support forever.
-      if (id === null) {
+      if (!attached) {
         clearTimeout(timer);
         this.#refuse(conn, `sent ${m.event} before handshaking`);
         return;
       }
 
-      const from = this.clients.get(id);
+      const from = this.clients.at(key);
       if (from === undefined) {
         return;
       }
@@ -173,9 +177,11 @@ export class Bridge {
 
     conn.on("close", () => {
       clearTimeout(timer);
-      if (id !== null) {
-        this.#log(`client detached: ${id}`);
-        this.clients.detach(id);
+      if (attached) {
+        this.#log(`client detached: ${this.clients.at(key)?.id ?? "?"}`);
+        // By connection, never by id: a superseded socket closing must not
+        // evict the live client that replaced it.
+        this.clients.detach(key);
       }
     });
 
