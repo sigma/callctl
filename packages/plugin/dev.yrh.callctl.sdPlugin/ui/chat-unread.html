@@ -53,6 +53,21 @@
   </head>
   <body>
     <div class="row">
+      <label for="client">Account</label>
+      <select id="client">
+        <option value="">Any Chat window</option>
+      </select>
+    </div>
+    <p class="hint">
+      Which Chat window this key follows. <strong>Any</strong> is the default and
+      needs no configuration — with one account signed in, it is always right.
+      With two, pick one per key: the binding is deliberately not assigned by
+      connection order, which depends on which window opened first and would
+      silently swap work and personal between sessions.
+      <span id="clientNote"></span>
+    </p>
+
+    <div class="row">
       <label for="label">Label</label>
       <input id="label" type="text" placeholder="derived from the account" />
     </div>
@@ -100,6 +115,48 @@
       function save() {
         send({ event: "setSettings", context: piContext, payload: settings });
       }
+      function sendToPlugin(payload) {
+        send({ event: "sendToPlugin", action: actionUUID, context: piContext, payload });
+      }
+
+      // Attached clients, refreshed while the PI is open: a Chat window can be
+      // opened or closed with this panel on screen, and a list that went stale
+      // the moment it was drawn would be worse than no list.
+      let clients = [];
+      function requestClients() {
+        sendToPlugin({ command: "listChatClients" });
+      }
+      function renderClients() {
+        const select = document.querySelector("#client");
+        const note = document.querySelector("#clientNote");
+        select.replaceChildren();
+
+        const any = document.createElement("option");
+        any.value = "";
+        any.textContent = "Any Chat window";
+        select.appendChild(any);
+
+        for (const c of clients) {
+          const opt = document.createElement("option");
+          opt.value = c.id;
+          opt.textContent = c.label;
+          select.appendChild(opt);
+        }
+
+        // A binding to a window that is not open right now stays selected: the
+        // binding lives on the key, and dropping it here would silently
+        // re-point the key at whichever account happened to be running.
+        if (settings.clientId !== "" && !clients.some((c) => c.id === settings.clientId)) {
+          const opt = document.createElement("option");
+          opt.value = settings.clientId;
+          opt.textContent = "(not currently open)";
+          select.appendChild(opt);
+          note.textContent = " This key's window is not open; the key shows the no-client face.";
+        } else {
+          note.textContent = "";
+        }
+        select.value = settings.clientId;
+      }
 
       function apply(s) {
         settings = {
@@ -111,7 +168,13 @@
         document.querySelector("#label").value = settings.label;
         document.querySelector("#profile").value = settings.profile;
         document.querySelector("#appId").value = settings.appId;
+        renderClients();
       }
+
+      document.querySelector("#client").addEventListener("change", (ev) => {
+        settings.clientId = ev.target.value;
+        save();
+      });
 
       for (const field of ["label", "profile", "appId"]) {
         document.querySelector("#" + field).addEventListener("change", (ev) => {
@@ -129,6 +192,13 @@
         }
         if (msg.event === "didReceiveSettings") {
           apply((msg.payload && msg.payload.settings) || {});
+        }
+        if (msg.event === "sendToPropertyInspector") {
+          const p = msg.payload || {};
+          if (p.command === "chatClients") {
+            clients = Array.isArray(p.clients) ? p.clients : [];
+            renderClients();
+          }
         }
       }
 
@@ -152,6 +222,8 @@
         ws.addEventListener("open", () => {
           send({ event: inRegisterEvent, uuid: inUUID });
           apply((actionInfo.payload && actionInfo.payload.settings) || {});
+          requestClients();
+          setInterval(requestClients, 3000);
         });
         ws.addEventListener("message", onMessage);
       };
