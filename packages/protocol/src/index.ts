@@ -1,3 +1,4 @@
+export * from "./chat.js";
 export * from "./debug.js";
 export * from "./events.js";
 export * from "./meet-selectors.js";
