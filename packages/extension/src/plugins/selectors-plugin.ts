@@ -1,6 +1,6 @@
 import type { SelectorConfig } from "@callctl/protocol";
 import { Command, message, StateEvent } from "@callctl/protocol";
-import type { SurfacePlugin } from "../core/plugin.js";
+import type { MidiAddressable, SurfacePlugin } from "../core/plugin.js";
 import type { Transport } from "../core/transport/transport.js";
 import { type SelectorRegistry, selectors } from "../meet/selectors.js";
 
@@ -20,7 +20,7 @@ import { type SelectorRegistry, selectors } from "../meet/selectors.js";
  */
 export type PersistSelectors = (config: SelectorConfig) => void;
 
-class SelectorsPlugin implements SurfacePlugin {
+class SelectorsPlugin implements SurfacePlugin, MidiAddressable {
   readonly #registry: SelectorRegistry;
   readonly #persist: PersistSelectors;
 
@@ -29,7 +29,11 @@ class SelectorsPlugin implements SurfacePlugin {
     this.#persist = persist;
   }
 
-  ID(): number {
+  ID(): string {
+    return "selectors";
+  }
+
+  midiCC(): number {
     return 2;
   }
 

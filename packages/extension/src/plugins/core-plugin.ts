@@ -1,5 +1,5 @@
 import { Command } from "@callctl/protocol";
-import type { SurfacePlugin } from "../core/plugin.js";
+import type { MidiAddressable, SurfacePlugin } from "../core/plugin.js";
 import type { Transport } from "../core/transport/transport.js";
 import { type API, ModeledAPI } from "../meet/api.js";
 import { HTMLModel, InputDevice, type Model } from "../meet/model.js";
@@ -9,7 +9,7 @@ import { HTMLModel, InputDevice, type Model } from "../meet/model.js";
  * and the participants/chat panels. Faithful port of the legacy `CorePlugin`,
  * with command names sourced from `@callctl/protocol`.
  */
-class CorePlugin implements SurfacePlugin {
+class CorePlugin implements SurfacePlugin, MidiAddressable {
   readonly #model: Model;
   readonly #api: API;
 
@@ -18,7 +18,11 @@ class CorePlugin implements SurfacePlugin {
     this.#api = new ModeledAPI(this.#model);
   }
 
-  ID(): number {
+  ID(): string {
+    return "core";
+  }
+
+  midiCC(): number {
     return 1;
   }
 

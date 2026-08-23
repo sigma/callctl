@@ -1,6 +1,6 @@
 import { message, SelectorKey, StateEvent } from "@callctl/protocol";
 import type { Disposer } from "../core/disposer.js";
-import type { SurfacePlugin } from "../core/plugin.js";
+import type { MidiAddressable, SurfacePlugin } from "../core/plugin.js";
 import type { Transport } from "../core/transport/transport.js";
 import { ControlsNotFoundError, HTMLModel } from "../meet/model.js";
 import { type SelectorRegistry, selectors } from "../meet/selectors.js";
@@ -156,7 +156,7 @@ class ModeledCallState implements CallState {
   }
 }
 
-class CallStatePlugin implements SurfacePlugin {
+class CallStatePlugin implements SurfacePlugin, MidiAddressable {
   readonly #model: HTMLCallStateModel;
   readonly #state: CallState;
 
@@ -165,7 +165,11 @@ class CallStatePlugin implements SurfacePlugin {
     this.#state = new ModeledCallState(this.#model);
   }
 
-  ID(): number {
+  ID(): string {
+    return "callstate";
+  }
+
+  midiCC(): number {
     return 200;
   }
 

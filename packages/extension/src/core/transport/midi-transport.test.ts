@@ -45,7 +45,8 @@ function fakeNav(access: FakeAccess): Navigator {
 /** A plugin that registers one handler under ordinal 0 for CC controller `id`. */
 function fakePlugin(id: number, handler: (msg: unknown) => void): SurfacePlugin {
   return {
-    ID: () => id,
+    ID: () => `plugin-${id}`,
+    midiCC: () => id,
     installHooks: vi.fn(),
     installHandlers: (t) => t.handle("op", handler as (msg: never) => void),
   } as unknown as SurfacePlugin;
@@ -201,5 +202,23 @@ describe("MidiTransport", () => {
     // selects ordinal 0, low nibble 7 is the payload.
     input.emit([0xbf, 0x42, 0x07]);
     expect(handler).toHaveBeenCalledWith({ event: "", data: "7" });
+  });
+
+  test("a plugin that declares no CC number is not installed at all", async () => {
+    const access = new FakeAccess([new FakeInput("a", "A", "acme")]);
+    const midi = new MidiTransport("all", fakeNav(access));
+    await flush();
+
+    // Identity only, no `midiCC` — a Chat-shaped plugin. It must not be asked to
+    // install anything, so nothing of it can end up addressable over MIDI.
+    const installHandlers = vi.fn();
+    midi.acceptPlugin({
+      ID: () => "unaddressable",
+      installHooks: vi.fn(),
+      installHandlers,
+    });
+
+    expect(installHandlers).not.toHaveBeenCalled();
+    expect(midi.midiMap.size).toBe(0);
   });
 });

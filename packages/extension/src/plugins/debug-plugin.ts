@@ -6,7 +6,7 @@ import {
   type DebugResponse,
   message,
 } from "@callctl/protocol";
-import type { SurfacePlugin } from "../core/plugin.js";
+import type { MidiAddressable, SurfacePlugin } from "../core/plugin.js";
 import type { Transport } from "../core/transport/transport.js";
 
 /**
@@ -97,14 +97,18 @@ function runOp(doc: Document, req: DebugRequest): DebugResponse {
   }
 }
 
-class DebugPlugin implements SurfacePlugin {
+class DebugPlugin implements SurfacePlugin, MidiAddressable {
   readonly #doc: Document;
 
   constructor(doc: Document = document) {
     this.#doc = doc;
   }
 
-  ID(): number {
+  ID(): string {
+    return "debug";
+  }
+
+  midiCC(): number {
     return 999;
   }
 
