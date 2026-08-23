@@ -1,10 +1,13 @@
 import type { AddressInfo } from "node:net";
 import {
+  Command,
   DebugCommand,
   DebugEvent,
   type DebugRequest,
   type Message,
   message,
+  SessionEvent,
+  StateEvent,
 } from "@callctl/protocol";
 import { afterEach, describe, expect, test } from "vitest";
 import { WebSocket as WsClient } from "ws";
@@ -44,6 +47,20 @@ async function setup() {
   const ext = new WsClient(`ws://127.0.0.1:${extPort}`);
   cleanups.push(() => ext.close());
   await new Promise<void>((r) => ext.once("open", () => r()));
+  // The handshake is mandatory: without it the bridge has no capability set to
+  // route on, and refuses the client (ADR 0001).
+  ext.send(
+    JSON.stringify(
+      message(
+        SessionEvent.Hello,
+        JSON.stringify({
+          id: "fake-meet",
+          surface: "meet",
+          ops: [...Object.values(Command), ...Object.values(StateEvent), DebugCommand.Request],
+        }),
+      ),
+    ),
+  );
   ext.on("message", (raw) => {
     const m = JSON.parse(raw.toString()) as Message;
     if (m.event === DebugCommand.Request) {

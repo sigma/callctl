@@ -48,15 +48,31 @@ async function main(): Promise<void> {
   );
 
   server.registerTool(
+    "callctl_clients",
+    {
+      description:
+        "List every attached client — its id, surface (meet/chat), label and the ops it handles. With more than one attached, 'the extension' is no longer a single thing: pass an id as `client` to the tools below to introspect that one specifically.",
+      inputSchema: {},
+    },
+    async () => jsonResult({ clients: bridge.clients }),
+  );
+
+  server.registerTool(
     "meet_dump",
     {
       description:
         "Snapshot every interactive Meet control (buttons, [aria-label], [data-is-muted]) with its attributes. Optional `q` filters by aria-label/text substring. Use this to find the real aria-label of a control before wiring it up.",
-      inputSchema: { q: z.string().optional().describe("case-insensitive label/text filter") },
+      inputSchema: {
+        q: z.string().optional().describe("case-insensitive label/text filter"),
+        client: z
+          .string()
+          .optional()
+          .describe("client id to target; omit for last-wins (see callctl_clients)"),
+      },
     },
-    async ({ q }) => {
+    async ({ q, client }) => {
       try {
-        return jsonResult(await bridge.debug("dump", q));
+        return jsonResult(await bridge.debug("dump", q, client));
       } catch (e) {
         return errorResult(e);
       }
@@ -67,11 +83,17 @@ async function main(): Promise<void> {
     "meet_query",
     {
       description: "Snapshot Meet controls matching a CSS selector, with their attributes.",
-      inputSchema: { selector: z.string().describe("CSS selector") },
+      inputSchema: {
+        selector: z.string().describe("CSS selector"),
+        client: z
+          .string()
+          .optional()
+          .describe("client id to target; omit for last-wins (see callctl_clients)"),
+      },
     },
-    async ({ selector }) => {
+    async ({ selector, client }) => {
       try {
-        return jsonResult(await bridge.debug("query", selector));
+        return jsonResult(await bridge.debug("query", selector, client));
       } catch (e) {
         return errorResult(e);
       }
@@ -82,11 +104,17 @@ async function main(): Promise<void> {
     "meet_click",
     {
       description: "Click the first Meet element matching a CSS selector.",
-      inputSchema: { selector: z.string().describe("CSS selector") },
+      inputSchema: {
+        selector: z.string().describe("CSS selector"),
+        client: z
+          .string()
+          .optional()
+          .describe("client id to target; omit for last-wins (see callctl_clients)"),
+      },
     },
-    async ({ selector }) => {
+    async ({ selector, client }) => {
       try {
-        return jsonResult(await bridge.debug("click", selector));
+        return jsonResult(await bridge.debug("click", selector, client));
       } catch (e) {
         return errorResult(e);
       }
@@ -101,11 +129,15 @@ async function main(): Promise<void> {
       inputSchema: {
         event: z.string().describe("protocol event name"),
         data: z.string().optional().describe("optional data payload"),
+        client: z
+          .string()
+          .optional()
+          .describe("client id to target; omit for last-wins (see callctl_clients)"),
       },
     },
-    async ({ event, data }) => {
+    async ({ event, data, client }) => {
       try {
-        bridge.sendCommand(event, data);
+        bridge.sendCommand(event, data, client);
         return jsonResult({ ok: true, sent: { event, data } });
       } catch (e) {
         return errorResult(e);
@@ -118,11 +150,16 @@ async function main(): Promise<void> {
     {
       description:
         "Read the extension's live Meet selector config (the match strings each control is found by). Use this to see what a control is currently matched on before overriding it.",
-      inputSchema: {},
+      inputSchema: {
+        client: z
+          .string()
+          .optional()
+          .describe("client id to target; omit for last-wins (see callctl_clients)"),
+      },
     },
-    async () => {
+    async ({ client }) => {
       try {
-        return jsonResult(await bridge.getSelectors());
+        return jsonResult(await bridge.getSelectors(client));
       } catch (e) {
         return errorResult(e);
       }
@@ -138,11 +175,15 @@ async function main(): Promise<void> {
         overrides: z
           .record(z.string(), z.string())
           .describe('selector-key → new match substring, e.g. { "handRaise": "Raise hand" }'),
+        client: z
+          .string()
+          .optional()
+          .describe("client id to target; omit for last-wins (see callctl_clients)"),
       },
     },
-    async ({ overrides }) => {
+    async ({ overrides, client }) => {
       try {
-        return jsonResult(await bridge.setSelectors(overrides));
+        return jsonResult(await bridge.setSelectors(overrides, client));
       } catch (e) {
         return errorResult(e);
       }
