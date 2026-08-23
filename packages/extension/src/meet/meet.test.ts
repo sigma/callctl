@@ -121,8 +121,8 @@ describe("ModeledState", () => {
     state.sendMuteState(transport as never, InputDevice.CAMERA);
 
     expect(sent).toEqual([
-      { event: "micState", data: "muted" },
-      { event: "cameraState", data: "unmuted" },
+      { event: "meet.micState", data: "muted" },
+      { event: "meet.cameraState", data: "unmuted" },
     ]);
   });
 });
