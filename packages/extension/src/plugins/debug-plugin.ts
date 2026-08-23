@@ -6,8 +6,8 @@ import {
   type DebugResponse,
   message,
 } from "@callctl/protocol";
+import type { SurfacePlugin } from "../core/plugin.js";
 import type { Transport } from "../core/transport/transport.js";
-import type { MeetPlugin } from "./plugin.js";
 
 /**
  * Dev-only introspection/manipulation of the live Meet DOM. Registered by
@@ -97,7 +97,7 @@ function runOp(doc: Document, req: DebugRequest): DebugResponse {
   }
 }
 
-class DebugPlugin implements MeetPlugin {
+class DebugPlugin implements SurfacePlugin {
   readonly #doc: Document;
 
   constructor(doc: Document = document) {
@@ -124,7 +124,7 @@ class DebugPlugin implements MeetPlugin {
   }
 }
 
-export function newDebugPlugin(): MeetPlugin {
+export function newDebugPlugin(): SurfacePlugin {
   console.log("loading debug plugin (dev build)");
   return new DebugPlugin();
 }

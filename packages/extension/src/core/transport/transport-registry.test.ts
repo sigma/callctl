@@ -1,6 +1,6 @@
 import type { Message } from "@callctl/protocol";
 import { describe, expect, test, vi } from "vitest";
-import type { MeetPlugin } from "../../plugins/plugin.js";
+import type { SurfacePlugin } from "../plugin.js";
 import { BaseTransport, type Retargetable } from "./transport.js";
 import { TransportRegistry } from "./transport-registry.js";
 
@@ -31,7 +31,7 @@ class FakeTransport extends BaseTransport implements Retargetable<number> {
   }
 }
 
-function fakePlugin(): MeetPlugin {
+function fakePlugin(): SurfacePlugin {
   return { ID: () => 1, installHooks: vi.fn(), installHandlers: vi.fn() };
 }
 

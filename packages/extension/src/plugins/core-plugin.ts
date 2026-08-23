@@ -1,15 +1,15 @@
 import { Command } from "@callctl/protocol";
+import type { SurfacePlugin } from "../core/plugin.js";
 import type { Transport } from "../core/transport/transport.js";
 import { type API, ModeledAPI } from "../meet/api.js";
 import { HTMLModel, InputDevice, type Model } from "../meet/model.js";
-import type { MeetPlugin } from "./plugin.js";
 
 /**
  * The always-on plugin: mic + camera (mute/unmute/toggle/query), leave call,
  * and the participants/chat panels. Faithful port of the legacy `CorePlugin`,
  * with command names sourced from `@callctl/protocol`.
  */
-class CorePlugin implements MeetPlugin {
+class CorePlugin implements SurfacePlugin {
   readonly #model: Model;
   readonly #api: API;
 
@@ -64,7 +64,7 @@ class CorePlugin implements MeetPlugin {
   }
 }
 
-export function newCorePlugin(): MeetPlugin {
+export function newCorePlugin(): SurfacePlugin {
   console.log("loading core plugin");
   return new CorePlugin();
 }

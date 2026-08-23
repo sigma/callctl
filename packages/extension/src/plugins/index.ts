@@ -1,9 +1,9 @@
+import type { SurfacePlugin } from "../core/plugin.js";
 import { newCallStatePlugin } from "./callstate-plugin.js";
 import { newCaptionsPlugin } from "./captions-plugin.js";
 import { newCorePlugin } from "./core-plugin.js";
 import { newDebugPlugin } from "./debug-plugin.js";
 import { newHandPlugin } from "./hand-plugin.js";
-import type { MeetPlugin } from "./plugin.js";
 import { newReactPlugin } from "./react-plugin.js";
 import { newSelectorsPlugin, type PersistSelectors } from "./selectors-plugin.js";
 
@@ -18,7 +18,7 @@ import { newSelectorsPlugin, type PersistSelectors } from "./selectors-plugin.js
  * shakes both the branch and the import away — a shipped extension carries no
  * debug surface. `vite` dev and `vite build --mode debug` keep it.
  */
-export function loadPlugins(opts: { persistSelectors?: PersistSelectors } = {}): MeetPlugin[] {
+export function loadPlugins(opts: { persistSelectors?: PersistSelectors } = {}): SurfacePlugin[] {
   const plugins = [
     newCorePlugin(),
     // After core: chains core's `onConnect` for its own on-connect push (§10).

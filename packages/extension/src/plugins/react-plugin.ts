@@ -1,7 +1,7 @@
 import { Command, REACTION_SLUGS, reactionLabel, SelectorKey } from "@callctl/protocol";
+import type { SurfacePlugin } from "../core/plugin.js";
 import type { Transport } from "../core/transport/transport.js";
 import { type SelectorRegistry, selectors } from "../meet/selectors.js";
-import type { MeetPlugin } from "./plugin.js";
 
 /**
  * Meet reactions. Reworked for current Meet: the old `.emojiPng[alt="…"]` grid
@@ -92,7 +92,7 @@ export class ReactAPI {
   }
 }
 
-class ReactPlugin implements MeetPlugin {
+class ReactPlugin implements SurfacePlugin {
   readonly #api: ReactAPI;
 
   constructor() {
@@ -115,7 +115,7 @@ class ReactPlugin implements MeetPlugin {
   }
 }
 
-export function newReactPlugin(): MeetPlugin {
+export function newReactPlugin(): SurfacePlugin {
   console.log("loading google react plugin");
   return new ReactPlugin();
 }

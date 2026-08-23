@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
-import type { MeetPlugin } from "../../plugins/plugin.js";
 import type { MidiDeviceRef } from "../config.js";
+import type { SurfacePlugin } from "../plugin.js";
 import { MidiTransport } from "./midi-transport.js";
 
 /**
@@ -43,12 +43,12 @@ function fakeNav(access: FakeAccess): Navigator {
 }
 
 /** A plugin that registers one handler under ordinal 0 for CC controller `id`. */
-function fakePlugin(id: number, handler: (msg: unknown) => void): MeetPlugin {
+function fakePlugin(id: number, handler: (msg: unknown) => void): SurfacePlugin {
   return {
     ID: () => id,
     installHooks: vi.fn(),
     installHandlers: (t) => t.handle("op", handler as (msg: never) => void),
-  } as unknown as MeetPlugin;
+  } as unknown as SurfacePlugin;
 }
 
 /** Flush the `requestMIDIAccess` promise so the constructor has bound inputs. */

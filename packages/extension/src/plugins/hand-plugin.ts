@@ -1,9 +1,9 @@
 import { Command, message, SelectorKey, StateEvent, StateValue } from "@callctl/protocol";
 import type { Disposer } from "../core/disposer.js";
+import type { SurfacePlugin } from "../core/plugin.js";
 import type { Transport } from "../core/transport/transport.js";
 import { ControlsNotFoundError, HTMLModel, type UIElement } from "../meet/model.js";
 import { type SelectorRegistry, selectors } from "../meet/selectors.js";
-import type { MeetPlugin } from "./plugin.js";
 
 /**
  * Raise/lower/toggle hand plus hand-state push-back. Faithful port of the
@@ -156,7 +156,7 @@ export class ModeledHandAPI implements HandAPI {
   }
 }
 
-class HandPlugin implements MeetPlugin {
+class HandPlugin implements SurfacePlugin {
   readonly #model: HTMLHandModel;
   readonly #api: HandAPI;
   readonly #state: HandState;
@@ -196,7 +196,7 @@ class HandPlugin implements MeetPlugin {
   }
 }
 
-export function newHandPlugin(): MeetPlugin {
+export function newHandPlugin(): SurfacePlugin {
   console.log("loading google hand plugin");
   return new HandPlugin();
 }
