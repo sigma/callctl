@@ -1,0 +1,105 @@
+<!doctype html>
+<!--
+  PROTOTYPE — THROWAWAY. Not production code. See issue #109.
+
+  "Three variants of the Chat unread key face, switchable via ?variant=, rendered
+  as real 144x144 @2x SVG matching packages/plugin/src/calendar/render.ts."
+
+  Sub-shape B (a standalone page) because this repo has no web surface at all —
+  the real consumer is `KeyAction.setImage`, which takes an SVG data URL. The
+  geometry, field colour and font here are copied from render.ts so what you see
+  is what the deck would show.
+
+  Double-click this file. No build, no server.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>PROTOTYPE — Chat unread key face (#109)</title>
+<style>
+  :root { --ink:#e6edf3; --dim:#8b949e; --panel:#161b22; }
+  body { margin:0; background:#0d1117; color:var(--ink);
+         font:14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; padding:28px 28px 110px; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  .sub { color:var(--dim); margin:0 0 24px; max-width:70ch; }
+  .banner { background:#3d2a00; border:1px solid #7a5200; color:#ffd68a;
+            padding:8px 12px; border-radius:6px; margin:0 0 24px; max-width:70ch; }
+  section { margin:0 0 34px; }
+  h2 { font-size:14px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); margin:0 0 12px; font-weight:600; }
+  .row { display:flex; gap:26px; flex-wrap:wrap; align-items:flex-start; }
+  .cell { text-align:center; }
+  .cell .cap { color:var(--dim); font-size:12px; margin-top:8px; max-width:150px; }
+  /* True key size: Stream Deck keys are 72x72 physical. */
+  .true svg { width:72px; height:72px; border-radius:9px; display:block; }
+  /* Enlarged, so detail is judgeable — but ALWAYS judge against the 72px row. */
+  .big svg { width:144px; height:144px; border-radius:16px; display:block; }
+  .deck { display:inline-flex; gap:8px; padding:12px; background:#1b1f24; border-radius:12px; }
+  .deck svg { width:72px; height:72px; border-radius:9px; display:block; }
+  .bar { position:fixed; left:50%; bottom:22px; transform:translateX(-50%);
+         background:#f0f6fc; color:#0d1117; border-radius:999px; padding:8px 10px;
+         display:flex; align-items:center; gap:14px; box-shadow:0 8px 30px rgba(0,0,0,.6);
+         font-weight:600; z-index:99; }
+  .bar button { border:0; background:#0d1117; color:#f0f6fc; width:30px; height:30px;
+                border-radius:999px; cursor:pointer; font-size:15px; line-height:1; }
+  .bar .name { min-width:290px; text-align:center; }
+  code { background:var(--panel); padding:1px 5px; border-radius:4px; }
+</style>
+</head>
+<body>
+<div class="banner"><strong>PROTOTYPE — throwaway.</strong> Judge the <em>72&nbsp;px</em> rows. The enlarged row exists only to inspect detail; a deck key is never that big.</div>
+<h1>Chat unread key face — variant <span id="vk"></span></h1>
+<p class="sub" id="vdesc"></p>
+
+<section><h2>True size — 72&nbsp;px</h2><div class="row true" id="rowTrue"></div></section>
+<section><h2>Enlarged — detail only</h2><div class="row big" id="rowBig"></div></section>
+<section>
+  <h2>Two bound keys, side by side (work + personal)</h2>
+  <p class="sub" style="margin-top:-6px">The case from <code>#107</code>: two Chat profiles on two keys. Left is bound-and-present, right is <em>bound-but-absent</em>. Is the difference trustworthy at a glance?</p>
+  <div class="row" id="rowDeck"></div>
+</section>
+
+<div class="bar">
+  <button id="prev" aria-label="Previous variant">←</button>
+  <span class="name" id="label"></span>
+  <button id="next" aria-label="Next variant">→</button>
+</div>
+
+<script src="faces.js"></script>
+<script>
+// VARIANTS / STATES come from faces.js (shared with the headless render check)
+const KEYS = Object.keys(VARIANTS);
+
+function render() {
+  const key = KEYS.includes(new URLSearchParams(location.search).get("variant"))
+    ? new URLSearchParams(location.search).get("variant") : "A";
+  const v = VARIANTS[key];
+  vk.textContent = key;
+  vdesc.textContent = v.desc;
+  label.textContent = `${key} — ${v.name}`;
+  const cells = (cls) => STATES.map(s =>
+    `<div class="cell"><div class="${cls}">${v.draw(s, null)}</div><div class="cap">${s.cap}</div></div>`).join("");
+  rowTrue.innerHTML = cells("true");
+  rowBig.innerHTML = cells("big");
+  // Two bound keys: present (work, 3 unread) vs bound-but-absent (personal).
+  rowDeck.innerHTML =
+    `<div class="deck">${v.draw({k:"unread", n:3}, "acme.com")}${v.draw({k:"absent", n:null}, "gmail.com")}</div>` +
+    `<div class="cell" style="align-self:center"><div class="cap" style="max-width:26ch">Left: bound &amp; present. Right: bound but that profile isn't running.</div></div>`;
+}
+const go = d => {
+  const key = KEYS.includes(new URLSearchParams(location.search).get("variant"))
+    ? new URLSearchParams(location.search).get("variant") : "A";
+  const next = KEYS[(KEYS.indexOf(key) + d + KEYS.length) % KEYS.length];
+  history.replaceState(null, "", `?variant=${next}`);
+  render();
+};
+prev.onclick = () => go(-1);
+next.onclick = () => go(1);
+addEventListener("keydown", e => {
+  if (/^(INPUT|TEXTAREA)$/.test(e.target.tagName) || e.target.isContentEditable) return;
+  if (e.key === "ArrowLeft") go(-1);
+  if (e.key === "ArrowRight") go(1);
+});
+render();
+</script>
+</body>
+</html>
