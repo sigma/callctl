@@ -3,6 +3,7 @@ import {
   type Message,
   message,
   reactionLabel,
+  SessionEvent,
   StateEvent,
   StateValue,
 } from "@callctl/protocol";
@@ -15,13 +16,19 @@ import { MeetRemote } from "./meet-remote.js";
  * A minimal stand-in for the Chrome extension: dials into the remote, records
  * every command it receives, and lets the test push state events back. Mirrors
  * `meetremote/internal/meet.Fake` from the Go integration test.
+ *
+ * It handshakes on connect, declaring the Meet ops a real content script's
+ * plugins would have registered — the bridge routes on that derived capability
+ * set and refuses a client without it (ADR 0001).
  */
 class FakeExtension {
   readonly received: Message[] = [];
   closed = false;
   #ws!: WebSocket;
 
-  async connect(port: number): Promise<void> {
+  constructor(readonly id = "fake-meet") {}
+
+  async connect(port: number, ops: string[] = MEET_OPS): Promise<void> {
     this.#ws = new WebSocket(`ws://127.0.0.1:${port}`);
     this.#ws.on("message", (raw) => {
       this.received.push(JSON.parse(raw.toString()) as Message);
@@ -33,6 +40,7 @@ class FakeExtension {
       this.#ws.once("open", resolve);
       this.#ws.once("error", reject);
     });
+    this.send(SessionEvent.Hello, JSON.stringify({ id: this.id, surface: "meet", ops }));
   }
 
   send(event: string, data?: string): void {
@@ -54,6 +62,9 @@ async function eventually(predicate: () => boolean, timeoutMs = 1000): Promise<v
     await new Promise((r) => setTimeout(r, 5));
   }
 }
+
+/** Every Meet op, as a real content script would derive it from its plugins. */
+const MEET_OPS = Object.values(Command);
 
 describe("MeetRemote", () => {
   let remote: MeetRemote;
@@ -170,19 +181,60 @@ describe("MeetRemote", () => {
     expect(byEvent.get(Command.React)).toBe(reactionLabel("yes"));
   });
 
-  it("drops the previous connection when a new extension dials in", async () => {
-    const first = new FakeExtension();
+  it("routes to the newest Meet client without evicting the older one", async () => {
+    const first = new FakeExtension("meet-1");
     await first.connect(port());
     await eventually(() => remote.connected);
 
-    const second = new FakeExtension();
+    const second = new FakeExtension("meet-2");
     await second.connect(port());
-    await eventually(() => second.received.length >= 3);
+    await eventually(() => second.received.length >= 4); // its own on-connect queries
+    first.received.length = 0;
+    second.received.length = 0;
 
-    // The server closes the superseded socket but stays connected via the new one.
-    await eventually(() => first.closed);
-    expect(remote.connected).toBe(true);
+    remote.toggleMic();
+
+    // Last-wins: a second Meet tab is a stale leftover, so the newest one is
+    // the one you mean. But it is no longer *evicted* — the shared bridge holds
+    // both, which is what lets a Chat client coexist with a Meet one at all.
+    await eventually(() => second.received.length >= 1);
+    expect(second.received.map((m) => m.event)).toContain(Command.ToggleMic);
+    expect(first.closed).toBe(false);
+    expect(first.received).toEqual([]);
+
+    first.close();
     second.close();
+  });
+
+  it("ignores a stale Meet tab's state pushes", async () => {
+    const stale = new FakeExtension("meet-stale");
+    await stale.connect(port());
+    await eventually(() => remote.connected);
+
+    const live = new FakeExtension("meet-live");
+    await live.connect(port());
+    await eventually(() => live.received.length >= 4);
+
+    live.send(StateEvent.MicState, StateValue.Muted);
+    await eventually(() => remote.micState() === false);
+
+    // The tab commands are *not* reaching must not repaint the LEDs.
+    stale.send(StateEvent.MicState, StateValue.Unmuted);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(remote.micState()).toBe(false);
+
+    stale.close();
+    live.close();
+  });
+
+  it("goes dark when the only attached client cannot drive Meet", async () => {
+    const chat = new FakeExtension("chat-1");
+    await chat.connect(port(), ["chat.getRoster", "chat.raise"]);
+    await new Promise((r) => setTimeout(r, 50));
+
+    // A Chat window being open is not Meet being reachable.
+    expect(remote.connected).toBe(false);
+    chat.close();
   });
 
   it("reports not paired and drops commands when no extension is connected", () => {

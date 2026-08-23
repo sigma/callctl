@@ -1,5 +1,7 @@
 import type { AddressInfo } from "node:net";
+import { Bridge } from "@callctl/bridge";
 import {
+  type ClientId,
   Command,
   DEFAULT_PORT,
   type Message,
@@ -9,7 +11,6 @@ import {
   StateEvent,
   StateValue,
 } from "@callctl/protocol";
-import { type WebSocket, WebSocketServer } from "ws";
 
 /**
  * A callback notified whenever the remote's connection or cached Meet state
@@ -19,23 +20,34 @@ import { type WebSocket, WebSocketServer } from "ws";
 export type StateChangeListener = () => void;
 
 /**
- * The local websocket **server** end of the Meet remote-control protocol — the
- * plugin listens, the Chrome extension dials in as the client.
+ * The op that means "a Meet client is attached".
  *
- * Faithful port of `meetremote.Remote` (Go). It owns the socket, caches the
- * mic/camera/hand state pushed by the extension, and fans changes out to
- * listeners (the Stream Deck toggle actions). All wire vocabulary comes from
- * `@callctl/protocol` — never hand-write event strings here.
+ * Presence is a **per-capability** question now, not a per-socket one (ADR
+ * 0001): with a Chat window also dialled in, "is a socket open?" answers yes
+ * while Meet is nowhere to be found. Any Meet op would serve; this one is the
+ * surface's most characteristic, and it is derived from the same handshake the
+ * routing reads, so it cannot drift from the ops that actually exist.
+ */
+const MEET_PRESENCE_OP: string = Command.ToggleMic;
+
+/**
+ * The Meet half of the local bridge — the plugin listens, the Chrome extension
+ * dials in as a client.
  *
- * Only one extension connection is kept at a time; a fresh dial-in replaces the
- * previous socket, matching the Go behaviour.
+ * Descendant of `meetremote.Remote` (Go), now sitting on top of
+ * {@link Bridge}: sockets, handshakes, the client registry and routing belong
+ * there and are surface-neutral, while this class owns only Meet state and its
+ * typed accessors. A future `ChatRemote` sits beside it, over the same bridge.
+ * All wire vocabulary comes from `@callctl/protocol` — never hand-write event
+ * strings here.
+ *
+ * Routing is last-wins with no explicit target, which is Meet's exact former
+ * behaviour: you cannot be in two calls, so a second Meet tab is a stale
+ * leftover and the newest one is the one you mean.
  */
 export class MeetRemote {
-  readonly #port: number;
+  readonly #bridge: Bridge;
   readonly #log: (message: string) => void;
-
-  #wss: WebSocketServer | null = null;
-  #conn: WebSocket | null = null;
 
   // Cached Meet state. Named to mirror the Go zero-values exactly: a fresh
   // remote assumes mic/camera on (not muted) and hand not lowered. On every
@@ -57,8 +69,8 @@ export class MeetRemote {
   readonly #listeners = new Set<StateChangeListener>();
 
   constructor(opts: { port?: number; log?: (message: string) => void } = {}) {
-    this.#port = opts.port ?? DEFAULT_PORT;
     this.#log = opts.log ?? (() => {});
+    this.#bridge = new Bridge({ port: opts.port ?? DEFAULT_PORT, log: this.#log });
 
     // Inbound state pushes from the extension update the cache. Mirrors the Go
     // `defaultInputHandlers` map (api.go + google_hand.go).
@@ -81,92 +93,62 @@ export class MeetRemote {
         this.#joinedKey = data ? data : null;
       },
     };
+
+    this.#wire();
   }
 
   /**
-   * Start listening for the extension to dial in. The returned promise resolves
-   * once the server is bound (or rejects if the port is unavailable). Safe to
-   * call once; a second call resolves immediately.
+   * Start listening for clients to dial in. The returned promise resolves once
+   * the bridge is bound (or rejects if the port is unavailable).
    */
   start(): Promise<void> {
-    if (this.#wss !== null) {
-      return Promise.resolve();
-    }
-
-    // Bind loopback only — the bridge is strictly local (Go listened on
-    // localhost:2395).
-    const wss = new WebSocketServer({ host: "127.0.0.1", port: this.#port });
-    this.#wss = wss;
-
-    wss.on("connection", (conn) => this.#onConnection(conn));
-
-    return new Promise((resolve, reject) => {
-      wss.once("listening", () => {
-        this.#log(`remote listening on 127.0.0.1:${this.address?.port}`);
-        wss.on("error", (err) => this.#log(`remote server error: ${err.message}`));
-        resolve();
-      });
-      wss.once("error", reject);
-    });
+    return this.#bridge.start();
   }
 
   /** The bound address once listening, or `null`. Mirrors Go's resolved `addr`. */
   get address(): AddressInfo | null {
-    const a = this.#wss?.address();
-    return a !== undefined && typeof a !== "string" ? a : null;
+    return this.#bridge.address;
   }
 
-  /** Stop listening and drop any live connection. */
+  /** Stop listening and drop every attached client. */
   close(): void {
-    this.#conn?.close();
-    this.#conn = null;
-    this.#wss?.close();
-    this.#wss = null;
+    this.#bridge.close();
   }
 
-  #onConnection(conn: WebSocket): void {
-    this.#log("extension connected");
+  #wire(): void {
+    this.#bridge.onMessage((m) => this.#onMessage(m));
 
-    // Keep a single connection: a new dial-in supersedes the old socket.
-    if (this.#conn !== null) {
-      this.#conn.close();
-    }
-    this.#conn = conn;
-
-    conn.on("message", (raw) => this.#processInput(raw.toString()));
-    conn.on("close", () => {
-      if (this.#conn === conn) {
-        this.#conn = null;
-        // Drop join-proof: with no extension we can no longer detect a call, so
-        // a stale key must not keep dismissing the late state (§10).
+    // The attached set changing is a state change from a key's point of view:
+    // Meet arriving lights the LEDs, Meet leaving must dim them.
+    this.#bridge.onClientsChange(() => {
+      if (!this.connected) {
+        // Drop join-proof: with no Meet client we can no longer detect a call,
+        // so a stale key must not keep dismissing the late state (§10).
         this.#joinedKey = null;
-        this.#log("extension disconnected");
         this.#notifyStateChange();
+        return;
       }
+      // On (re)connect, ask Meet for the current state so the LEDs are accurate
+      // rather than showing our stale defaults (Go called Ask*State here).
+      this.#notifyStateChange();
+      this.askMicState();
+      this.askCameraState();
+      this.askHandState();
+      this.askCaptionsState();
     });
-    conn.on("error", (err) => this.#log(`connection error: ${err.message}`));
-
-    // On (re)connect, ask Meet for the current state so the LEDs are accurate
-    // rather than showing our stale defaults (Go called Ask*State here).
-    this.#notifyStateChange();
-    this.askMicState();
-    this.askCameraState();
-    this.askHandState();
-    this.askCaptionsState();
   }
 
-  #processInput(raw: string): void {
-    let m: Message;
-    try {
-      m = JSON.parse(raw) as Message;
-    } catch {
-      this.#log(`ignoring non-JSON message: ${raw}`);
+  #onMessage(m: Message): void {
+    const handler = this.#inputHandlers[m.event];
+    if (handler === undefined) {
+      // Not ours — a Chat client's roster push travels the same bridge.
       return;
     }
 
-    const handler = this.#inputHandlers[m.event];
-    if (handler === undefined) {
-      this.#log(`unknown event: ${m.event}`);
+    // Only the client we would *send* to may move our state. Otherwise a second
+    // Meet tab, left open on a call you are not in, silently overwrites the
+    // LEDs for the tab the commands are actually reaching.
+    if (m.client !== undefined && m.client !== this.#target()) {
       return;
     }
 
@@ -175,12 +157,13 @@ export class MeetRemote {
     this.#notifyStateChange();
   }
 
+  /** Which client Meet commands currently reach: last-wins among claimants. */
+  #target(): ClientId | undefined {
+    return this.#bridge.clients.route(MEET_PRESENCE_OP)?.id;
+  }
+
   #send(event: string, data?: string): void {
-    if (this.#conn === null) {
-      this.#log(`dropping ${event}: remote is not paired`);
-      return;
-    }
-    this.#conn.send(JSON.stringify(message(event, data)));
+    this.#bridge.send(message(event, data));
   }
 
   // --- State change fan-out --------------------------------------------------
@@ -203,9 +186,15 @@ export class MeetRemote {
 
   // --- Remote "LEDs" (state readers, mirroring Go semantics) -----------------
 
-  /** Whether the extension is currently connected. */
+  /**
+   * Whether a **Meet** client is attached.
+   *
+   * Per-capability on purpose: with the bridge holding several clients, "a
+   * socket is open" is no longer the same question — a Chat window alone must
+   * leave every Meet key dark.
+   */
   get connected(): boolean {
-    return this.#conn !== null;
+    return this.#bridge.handles(MEET_PRESENCE_OP);
   }
 
   /** Mic is on (unmuted). Mirrors Go `MicState()`. */
