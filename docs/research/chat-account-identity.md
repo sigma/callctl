@@ -21,6 +21,11 @@
 
 ---
 
+> ⚠️ **§9 supersedes where it disagrees.** §1–§8 were written *without* a live session.
+> §9 records real observations against a signed-in Chat tab and **confirms §5's route**:
+> the account identity is in the **top frame** (not the cross-origin OneGoogle frame §5.2
+> feared), on an `aria-label`, reachable with a **locale-independent** selector.
+
 ## 0. Verified vs. hypothesis — read this first
 
 **The author of this note could not log into a Google account.** No live, authenticated Chat
@@ -868,6 +873,93 @@ Ordered by how much the answer changes the design.
    word avoids it — prefer that.
 
 ---
+
+## 9. Live confirmation (#117) — the route works, in the top frame
+
+**Observed, not inferred.** Captured 2026-08-23 against a signed-in `chat.google.com`
+tab through the dev bridge (`/query`, `/dump` on :2397), with a debug-only content script
+at `all_frames: false` — so **everything below is the top frame**. All addresses are
+redacted here; the raw values were never written to disk.
+
+### 9.1 The account identity is in the top frame
+
+§5.2 flagged the risk that the identity might live only in the cross-origin OneGoogle
+frame, killing the DOM route. **It does not.** The top-frame document contains:
+
+```html
+<a class="gb_C gb_9a gb_8" role="button"
+   aria-label="Google Account: <Display Name>  &#10;(<local>@<domain>)">
+```
+
+- Exactly **one** such element in the document.
+- **`text` and `visibleText` are both empty.** The identity exists *only* in the
+  attribute — there is no text-node route, and the #113 `innerText` technique does not
+  apply here. (Checked explicitly rather than assumed.)
+- No `href`. `role="button"` — it opens the account switcher.
+- Both the **display name** and the **address** are present, so the domain is derivable
+  by taking the part after `@`.
+
+The `ogs.google.com` frame *is* present (§5.2's fear was well-founded in principle), but
+the identity is duplicated into the host page's OneGoogle bar markup, so no cross-origin
+reach is needed.
+
+### 9.2 🟢 A locale-independent selector
+
+The obvious handle is the `"Google Account:"` prefix — and it is **English**, so it
+carries exactly the locale risk that `chat-roster-dom.md` §8.5 documents for the unread
+tokens. It is avoidable here:
+
+| Selector | Matches |
+|---|---|
+| `[aria-label*="@"]` | **1** |
+| `a[role="button"][aria-label*="@"]` | **1** |
+
+**Selecting on `@` rather than on a localised word makes this locale-invariant** — an
+email address contains `@` in every locale. Prefer
+`a[role="button"][aria-label*="@"]`: same single match, but scoped enough that an
+unrelated mention chip acquiring an `@`-bearing `aria-label` would not collide.
+
+This is a **better position than the roster signals are in** (§8.5 of the roster note),
+which have no locale-free formulation and must stay overridable.
+
+Extracting the address from the label is a **lexical token extraction**, not parsing —
+take the `@`-bearing token. That is the same justification `packages/extension/src/meet/location.ts`
+already gives for its `MEETING_CODE` pattern ("a fixed lexical token, so a single anchored
+pattern is the right tool — not a parser").
+
+The `gb_*` classes are Google-Bar-namespaced and still generated; **do not use them**.
+
+### 9.3 The account index is readable without touching the frame
+
+The OneGoogle iframe's `src` is visible from the top frame and carries the index:
+
+```
+https://ogs.google.com/u/0/widget/app?awwd=1&gpa=4&...
+```
+
+So `/u/<n>` is obtainable **without** cross-origin access — useful for fallback tier 5.
+It remains session-dependent (§3), so it must not become part of the client id (§9.5).
+
+Other frames seen, none needed: `studio.workspace.google.com` (side panel),
+`contacts.google.com` (hovercards), `accounts.google.com/RotateCookiesPage`.
+
+### 9.4 Consequences for the recommendation
+
+§5's route is **confirmed and cheap**: zero incremental permission, top frame, one
+element, locale-invariant selector, both name and domain available. The fallback ladder
+in §7 stands unchanged, but tiers 3–6 are now genuinely unlikely to be reached.
+
+### 9.5 ⚠️ Still untested
+
+- **Timing.** The element was present when queried a few seconds after load. Whether it
+  exists at `document_idle` — or needs an observer like the Meet controls do — was not
+  measured. Assume it may arrive late.
+- **A second account.** Only one signed-in account was available, so the claim that the
+  label distinguishes two accounts in one profile is *structurally* sound but
+  unobserved.
+- **Uniqueness at scale.** `[aria-label*="@"]` matched once in this session. A different
+  Chat state (an open mention autocomplete, say) could plausibly introduce another.
+  The scoped selector mitigates but does not disprove this.
 
 ## Sources
 
