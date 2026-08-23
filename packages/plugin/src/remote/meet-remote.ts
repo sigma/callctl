@@ -47,6 +47,8 @@ const MEET_PRESENCE_OP: string = Command.ToggleMic;
  */
 export class MeetRemote {
   readonly #bridge: Bridge;
+  /** Did we build the bridge? Only its owner may start or close it. */
+  readonly #ownsBridge: boolean;
   readonly #log: (message: string) => void;
 
   // Cached Meet state. Named to mirror the Go zero-values exactly: a fresh
@@ -68,9 +70,16 @@ export class MeetRemote {
   readonly #inputHandlers: Record<string, (data: string | undefined) => void>;
   readonly #listeners = new Set<StateChangeListener>();
 
-  constructor(opts: { port?: number; log?: (message: string) => void } = {}) {
+  /**
+   * Pass a `bridge` to share one with the other surfaces' remotes — the normal
+   * case, since they all live behind a single local port. Passing a `port`
+   * instead builds a private bridge this remote owns, which is what a Meet-only
+   * test wants.
+   */
+  constructor(opts: { port?: number; log?: (message: string) => void; bridge?: Bridge } = {}) {
     this.#log = opts.log ?? (() => {});
-    this.#bridge = new Bridge({ port: opts.port ?? DEFAULT_PORT, log: this.#log });
+    this.#ownsBridge = opts.bridge === undefined;
+    this.#bridge = opts.bridge ?? new Bridge({ port: opts.port ?? DEFAULT_PORT, log: this.#log });
 
     // Inbound state pushes from the extension update the cache. Mirrors the Go
     // `defaultInputHandlers` map (api.go + google_hand.go).
@@ -99,10 +108,11 @@ export class MeetRemote {
 
   /**
    * Start listening for clients to dial in. The returned promise resolves once
-   * the bridge is bound (or rejects if the port is unavailable).
+   * the bridge is bound (or rejects if the port is unavailable). A no-op when
+   * the bridge is shared — its owner starts it.
    */
   start(): Promise<void> {
-    return this.#bridge.start();
+    return this.#ownsBridge ? this.#bridge.start() : Promise.resolve();
   }
 
   /** The bound address once listening, or `null`. Mirrors Go's resolved `addr`. */
@@ -110,9 +120,11 @@ export class MeetRemote {
     return this.#bridge.address;
   }
 
-  /** Stop listening and drop every attached client. */
+  /** Stop listening and drop every attached client. Owner only. */
   close(): void {
-    this.#bridge.close();
+    if (this.#ownsBridge) {
+      this.#bridge.close();
+    }
   }
 
   #wire(): void {
