@@ -156,19 +156,39 @@ describe("the client id", () => {
   test("is minted once and survives every later read", async () => {
     const { local } = fakeStorage();
 
-    const first = await loadClientId(local);
-    const second = await loadClientId(local);
+    const first = await loadClientId(local, "chat");
+    const second = await loadClientId(local, "chat");
 
     // Storage is per-Chrome-profile, so this is already a per-profile identity:
-    // stable across reconnect, reload and restart.
+    // stable across reconnect, reload and restart — which is what lets a deck
+    // key's binding survive all three.
     expect(second).toBe(first);
     expect(first).not.toBe("");
   });
 
   test("two profiles mint different ids", async () => {
     // Separate stores stand in for separate Chrome profiles.
-    const a = await loadClientId(fakeStorage().local);
-    const b = await loadClientId(fakeStorage().local);
+    const a = await loadClientId(fakeStorage().local, "chat");
+    const b = await loadClientId(fakeStorage().local, "chat");
     expect(a).not.toBe(b);
+  });
+
+  test("🔴 the two surfaces of one install are two different clients", async () => {
+    // The store is shared by every content script, so the bare install id is
+    // the same string on both. Conflating them knocked every Chat key dark the
+    // moment a Meet tab opened.
+    const { local } = fakeStorage();
+
+    const chat = await loadClientId(local, "chat");
+    const meet = await loadClientId(local, "meet");
+
+    expect(chat).not.toBe(meet);
+  });
+
+  test("the account index appears nowhere in it", async () => {
+    // It is a property of the session, not the account: an id built on it would
+    // re-target every binding after a different sign-in order.
+    const id = await loadClientId(fakeStorage().local, "chat");
+    expect(id).not.toMatch(/\bu\/\d/);
   });
 });
