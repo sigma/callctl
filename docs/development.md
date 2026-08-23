@@ -108,7 +108,7 @@ POST /selectors  {"handRaise":"…",…}  push a partial selector override (drif
 ```
 
 Diagnostic idioms:
-- `curl 'localhost:2397/state'`, then `curl 'localhost:2397/command?event=toggleMic'`,
+- `curl 'localhost:2397/state'`, then `curl 'localhost:2397/command?event=meet.toggleMic'`,
   then `curl 'localhost:2397/state'` again **without** re-asking → tells you whether a
   change auto-pushed (state-sync debugging).
 - `curl 'localhost:2397/dump?q=hand'` → find a control's current aria-label/attrs
@@ -138,8 +138,8 @@ Keys: `mic`, `camera`, `leave`, `participants`, `chat`, `handRaise`, `handLower`
 Wire protocol (rides the normal websocket):
 
 ```
-→ {event:"getSelectors"}                       ← {event:"selectors", data:<full JSON>}
-→ {event:"setSelectors", data:<partial JSON>}  ← {event:"selectors", data:<merged JSON>}
+→ {event:"meet.getSelectors"}                       ← {event:"meet.selectors", data:<full JSON>}
+→ {event:"meet.setSelectors", data:<partial JSON>}  ← {event:"meet.selectors", data:<merged JSON>}
 ```
 
 Because every DOM lookup reads the registry **fresh**, a pushed override takes

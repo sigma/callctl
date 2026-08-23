@@ -104,13 +104,13 @@ describe("DebugBridge", () => {
   test("sendCommand injects a raw command at the extension", async () => {
     const { bridge, ext } = await setup();
     const received = nextMessage(ext);
-    bridge.sendCommand("toggleHand");
-    expect(await received).toEqual({ event: "toggleHand" });
+    bridge.sendCommand("meet.toggleHand");
+    expect(await received).toEqual({ event: "meet.toggleHand" });
   });
 
   test("caches mic/camera/hand state pushed by the extension", async () => {
     const { bridge, ext } = await setup();
-    ext.send(JSON.stringify(message("micState", "muted")));
+    ext.send(JSON.stringify(message("meet.micState", "muted")));
     await waitFor(() => bridge.state.mic === "muted");
     expect(bridge.state.mic).toBe("muted");
   });
@@ -129,13 +129,13 @@ describe("DebugBridge", () => {
 
     // plugin → extension
     const atExt = nextMessage(ext);
-    plugin.send(JSON.stringify(message("toggleMic")));
-    expect(await atExt).toEqual({ event: "toggleMic" });
+    plugin.send(JSON.stringify(message("meet.toggleMic")));
+    expect(await atExt).toEqual({ event: "meet.toggleMic" });
 
     // extension → plugin
     const atPlugin = nextMessage(plugin);
-    ext.send(JSON.stringify(message("micState", "muted")));
-    expect(await atPlugin).toEqual({ event: "micState", data: "muted" });
+    ext.send(JSON.stringify(message("meet.micState", "muted")));
+    expect(await atPlugin).toEqual({ event: "meet.micState", data: "muted" });
   });
 
   test("does NOT forward debug responses upstream to the plugin", async () => {
@@ -160,7 +160,7 @@ describe("DebugBridge", () => {
     // Extension emits a debug response unprompted; it must be intercepted.
     ext.send(JSON.stringify(message(DebugEvent.Response, JSON.stringify({ id: "x", ok: true }))));
     // Also send a normal state event to give the plugin *something* to receive.
-    ext.send(JSON.stringify(message("micState", "muted")));
+    ext.send(JSON.stringify(message("meet.micState", "muted")));
     await waitFor(() => bridge.state.mic === "muted");
     expect(leaked).toBe(false);
   });
@@ -169,8 +169,10 @@ describe("DebugBridge", () => {
     const { bridge, ext } = await setup();
     ext.on("message", (raw) => {
       const m = JSON.parse(raw.toString()) as Message;
-      if (m.event === "getSelectors") {
-        ext.send(JSON.stringify(message("selectors", JSON.stringify({ leave: "Leave call" }))));
+      if (m.event === "meet.getSelectors") {
+        ext.send(
+          JSON.stringify(message("meet.selectors", JSON.stringify({ leave: "Leave call" }))),
+        );
       }
     });
     await expect(bridge.getSelectors()).resolves.toEqual({ leave: "Leave call" });
@@ -181,9 +183,9 @@ describe("DebugBridge", () => {
     const seen = new Promise<Message>((r) => {
       ext.on("message", (raw) => {
         const m = JSON.parse(raw.toString()) as Message;
-        if (m.event === "setSelectors") {
+        if (m.event === "meet.setSelectors") {
           r(m);
-          ext.send(JSON.stringify(message("selectors", JSON.stringify({ handRaise: "Up" }))));
+          ext.send(JSON.stringify(message("meet.selectors", JSON.stringify({ handRaise: "Up" }))));
         }
       });
     });
@@ -205,13 +207,13 @@ describe("DebugBridge", () => {
 
     let leaked = false;
     plugin.on("message", (raw) => {
-      if ((JSON.parse(raw.toString()) as Message).event === "selectors") {
+      if ((JSON.parse(raw.toString()) as Message).event === "meet.selectors") {
         leaked = true;
       }
     });
 
-    ext.send(JSON.stringify(message("selectors", JSON.stringify({ leave: "x" }))));
-    ext.send(JSON.stringify(message("micState", "muted")));
+    ext.send(JSON.stringify(message("meet.selectors", JSON.stringify({ leave: "x" }))));
+    ext.send(JSON.stringify(message("meet.micState", "muted")));
     await waitFor(() => bridge.state.mic === "muted");
     expect(leaked).toBe(false);
   });

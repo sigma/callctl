@@ -97,7 +97,7 @@ async function main(): Promise<void> {
     "meet_command",
     {
       description:
-        "Inject a raw protocol command at the extension (e.g. event 'toggleHand', 'react' with data 'waving hand'). Bypasses the plugin — useful to exercise a command directly.",
+        "Inject a raw protocol command at the extension (e.g. event 'meet.toggleHand', 'meet.react' with data 'waving hand'). Bypasses the plugin — useful to exercise a command directly.",
       inputSchema: {
         event: z.string().describe("protocol event name"),
         data: z.string().optional().describe("optional data payload"),

@@ -14,9 +14,9 @@ import { type SelectorRegistry, selectors } from "../meet/selectors.js";
  * without republishing the extension is a first-class capability.
  *
  * Wire protocol:
- *   ← { event: "getSelectors" }                     → push current full config
- *   ← { event: "setSelectors", data: <partial JSON> } → merge, persist, push back
- *   → { event: "selectors", data: <full config JSON> }
+ *   ← { event: "meet.getSelectors" }                     → push current full config
+ *   ← { event: "meet.setSelectors", data: <partial JSON> } → merge, persist, push back
+ *   → { event: "meet.selectors", data: <full config JSON> }
  */
 export type PersistSelectors = (config: SelectorConfig) => void;
 

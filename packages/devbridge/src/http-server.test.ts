@@ -92,9 +92,9 @@ describe("HTTP facade", () => {
         }
       }),
     );
-    const body = await (await fetch(`${base}/command?event=toggleHand`)).json();
-    expect(body).toMatchObject({ ok: true, sent: { event: "toggleHand" } });
-    expect(await received).toEqual({ event: "toggleHand" });
+    const body = await (await fetch(`${base}/command?event=meet.toggleHand`)).json();
+    expect(body).toMatchObject({ ok: true, sent: { event: "meet.toggleHand" } });
+    expect(await received).toEqual({ event: "meet.toggleHand" });
   });
 
   test("unknown route 404s", async () => {

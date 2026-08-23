@@ -93,9 +93,9 @@ describe("SelectorsPlugin round-trip", () => {
     const { sent, fire, transport } = fakeTransport();
     newSelectorsPlugin(undefined, reg).installHandlers(transport);
 
-    fire("getSelectors");
+    fire("meet.getSelectors");
     expect(sent).toHaveLength(1);
-    expect(sent[0].event).toBe("selectors");
+    expect(sent[0].event).toBe("meet.selectors");
     expect(JSON.parse(sent[0].data ?? "{}")).toEqual(DEFAULT_SELECTORS);
   });
 
@@ -105,7 +105,7 @@ describe("SelectorsPlugin round-trip", () => {
     const { sent, fire, transport } = fakeTransport();
     newSelectorsPlugin((c) => persisted.push(c), reg).installHandlers(transport);
 
-    fire("setSelectors", JSON.stringify({ handRaise: "Put hand up" }));
+    fire("meet.setSelectors", JSON.stringify({ handRaise: "Put hand up" }));
 
     expect(reg.get(SelectorKey.HandRaise)).toBe("Put hand up");
     expect(persisted).toHaveLength(1);
@@ -118,7 +118,7 @@ describe("SelectorsPlugin round-trip", () => {
     const { fire, transport } = fakeTransport();
     newSelectorsPlugin(() => {}, reg).installHandlers(transport);
 
-    fire("setSelectors", "}{ not json");
+    fire("meet.setSelectors", "}{ not json");
     expect(reg.all()).toEqual(DEFAULT_SELECTORS);
   });
 });
