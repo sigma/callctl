@@ -29,6 +29,8 @@ const settingsEv = (action: { id: string }, settings: Record<string, unknown>): 
 });
 // biome-ignore lint/suspicious/noExplicitAny: fake SDK events are structurally typed for the handlers.
 const disappearEv = (action: { id: string }): any => ({ action });
+// biome-ignore lint/suspicious/noExplicitAny: fake SDK events are structurally typed for the handlers.
+const keyDownEv = (action: { id: string }): any => ({ action });
 
 const unread = (id: string, muted = false): ChatConversation => ({ id, name: id, muted });
 
@@ -227,6 +229,32 @@ describe("ChatUnreadAction", () => {
 
       expect(lastRendered(key)).toContain(">work<");
     });
+  });
+});
+
+describe("pressing the key", () => {
+  it("raises the bound client's window, not another's", () => {
+    const f = fakeRemote({ work: [unread("a")], personal: [] });
+    const action = new ChatUnreadAction("uuid", f.remote);
+    const key = fakeKey("k1");
+    action.onWillAppear(appearEv(key, { clientId: "personal" }));
+
+    action.onKeyDown(keyDownEv(key));
+
+    expect(f.remote.raise).toHaveBeenCalledWith("personal");
+  });
+
+  it("an unbound key raises whichever client is available", () => {
+    const f = fakeRemote({ work: [] });
+    const action = new ChatUnreadAction("uuid", f.remote);
+    const key = fakeKey("k1");
+    action.onWillAppear(appearEv(key, {}));
+
+    action.onKeyDown(keyDownEv(key));
+
+    // Empty binding means "any client with the capability", so the remote does
+    // the resolving — the key does not pick one itself.
+    expect(f.remote.raise).toHaveBeenCalledWith("");
   });
 });
 

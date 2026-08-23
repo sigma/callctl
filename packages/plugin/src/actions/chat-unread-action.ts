@@ -1,6 +1,7 @@
 import {
   type DidReceiveSettingsEvent,
   type KeyAction,
+  type KeyDownEvent,
   SingletonAction,
   type WillAppearEvent,
   type WillDisappearEvent,
@@ -66,6 +67,20 @@ export class ChatUnreadAction extends SingletonAction {
 
   override onWillDisappear(ev: WillDisappearEvent): void {
     this.#keys.delete(ev.action.id);
+  }
+
+  /**
+   * Press brings the Chat window to the front.
+   *
+   * With the bound client attached, the plugin sends `chat.raise` to **that**
+   * client, so with two Chat windows open the right one comes forward.
+   */
+  override onKeyDown(ev: KeyDownEvent): void {
+    const entry = this.#keys.get(ev.action.id);
+    if (entry === undefined) {
+      return;
+    }
+    this.#remote.raise(entry.settings.clientId);
   }
 
   override onDidReceiveSettings(ev: DidReceiveSettingsEvent): void {
