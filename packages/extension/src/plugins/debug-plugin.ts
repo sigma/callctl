@@ -45,6 +45,10 @@ function describe(el: Element): DebugControl {
     dataIsMuted: el.getAttribute("data-is-muted"),
     disabled: el.hasAttribute("disabled") || el.getAttribute("aria-disabled") === "true",
     text: (el.textContent ?? "").trim().slice(0, MAX_TEXT),
+    // `innerText` is layout-aware, so it reports only what is actually rendered.
+    // Guard the cast: non-HTML elements (SVG) have no `innerText`.
+    visibleText: ((el as HTMLElement).innerText ?? "").trim().slice(0, MAX_TEXT),
+    fontWeight: getComputedStyle(el).fontWeight,
     attrs: attrsOf(el),
     html: el.outerHTML.slice(0, MAX_HTML),
   };
