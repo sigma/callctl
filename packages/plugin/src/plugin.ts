@@ -5,6 +5,7 @@ import streamDeck from "@elgato/streamdeck";
 import { buildActions } from "./actions/index.js";
 import { CalendarService } from "./calendar/service.js";
 import { handlePiTestMessage } from "./calendar/test-feed.js";
+import { handlePiChatClientsMessage } from "./chat/pi.js";
 import { type AppTarget, openChatApp } from "./open/app-open.js";
 import { openWithProfile } from "./open/profile-open.js";
 import { ChatRemote } from "./remote/chat-remote.js";
@@ -61,7 +62,11 @@ streamDeck.settings.onDidReceiveGlobalSettings((ev) => {
 // candidate feed URL, routed through the pure handler so the wire round-trip is
 // the only SDK-coupled part. Non-testFeed messages yield null and are ignored.
 streamDeck.ui.onSendToPlugin(async (ev) => {
-  const reply = await handlePiTestMessage(ev.payload);
+  // Two PIs share this one sink, so each handler declines what is not its
+  // message by returning null and the next one gets a look.
+  const reply =
+    handlePiChatClientsMessage(ev.payload, () => chat.clients()) ??
+    (await handlePiTestMessage(ev.payload));
   if (reply === null) return;
   // The reply is plain JSON; cast through `unknown` to the SDK's payload type
   // without importing its bundled JsonValue (not re-exported from the entry).
