@@ -1,6 +1,6 @@
 import type { Message } from "@callctl/protocol";
-import type { MeetPlugin } from "../../plugins/plugin.js";
 import { type MidiDevices, matchesMidiDevice } from "../config.js";
+import type { SurfacePlugin } from "../plugin.js";
 import { BaseTransport, type Retargetable } from "./transport.js";
 
 /**
@@ -109,7 +109,7 @@ export class MidiTransport extends BaseTransport implements Retargetable<MidiDev
     return this.#selection.some((ref) => matchesMidiDevice(input, ref));
   }
 
-  acceptPlugin(plugin: MeetPlugin): void {
+  acceptPlugin(plugin: SurfacePlugin): void {
     this.#currentPlugin = plugin.ID();
     console.log(`Accepting plugin ${plugin.ID()}`);
     this.#currentOp = 0;

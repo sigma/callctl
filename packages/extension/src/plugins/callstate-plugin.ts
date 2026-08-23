@@ -1,9 +1,9 @@
 import { message, SelectorKey, StateEvent } from "@callctl/protocol";
 import type { Disposer } from "../core/disposer.js";
+import type { SurfacePlugin } from "../core/plugin.js";
 import type { Transport } from "../core/transport/transport.js";
 import { ControlsNotFoundError, HTMLModel } from "../meet/model.js";
 import { type SelectorRegistry, selectors } from "../meet/selectors.js";
-import type { MeetPlugin } from "./plugin.js";
 
 /**
  * Optional read-only **join-detection** (§10). This plugin never drives Meet: it
@@ -156,7 +156,7 @@ class ModeledCallState implements CallState {
   }
 }
 
-class CallStatePlugin implements MeetPlugin {
+class CallStatePlugin implements SurfacePlugin {
   readonly #model: HTMLCallStateModel;
   readonly #state: CallState;
 
@@ -190,7 +190,7 @@ class CallStatePlugin implements MeetPlugin {
   }
 }
 
-export function newCallStatePlugin(): MeetPlugin {
+export function newCallStatePlugin(): SurfacePlugin {
   console.log("loading call-state plugin");
   return new CallStatePlugin();
 }

@@ -1,9 +1,9 @@
 import { Command, message, SelectorKey, StateEvent, StateValue } from "@callctl/protocol";
 import type { Disposer } from "../core/disposer.js";
+import type { SurfacePlugin } from "../core/plugin.js";
 import type { Transport } from "../core/transport/transport.js";
 import { ControlsNotFoundError, HTMLModel, type UIElement } from "../meet/model.js";
 import { type SelectorRegistry, selectors } from "../meet/selectors.js";
-import type { MeetPlugin } from "./plugin.js";
 
 /**
  * Enable/disable/toggle captions plus captions-state push-back. Modeled on
@@ -156,7 +156,7 @@ export class ModeledCaptionsAPI implements CaptionsAPI {
   }
 }
 
-class CaptionsPlugin implements MeetPlugin {
+class CaptionsPlugin implements SurfacePlugin {
   readonly #model: HTMLCaptionsModel;
   readonly #api: CaptionsAPI;
   readonly #state: CaptionsState;
@@ -196,7 +196,7 @@ class CaptionsPlugin implements MeetPlugin {
   }
 }
 
-export function newCaptionsPlugin(): MeetPlugin {
+export function newCaptionsPlugin(): SurfacePlugin {
   console.log("loading google captions plugin");
   return new CaptionsPlugin();
 }

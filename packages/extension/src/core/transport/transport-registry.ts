@@ -1,5 +1,5 @@
-import type { MeetPlugin } from "../../plugins/plugin.js";
 import type { Disposer } from "../disposer.js";
+import type { SurfacePlugin } from "../plugin.js";
 import type { Retargetable, Transport } from "./transport.js";
 
 /**
@@ -42,7 +42,7 @@ export type TransportId = (typeof TransportId)[keyof typeof TransportId];
  * deviceSet).
  */
 export class TransportRegistry {
-  readonly #plugins: MeetPlugin[];
+  readonly #plugins: SurfacePlugin[];
   readonly #live = new Map<string, Transport>();
 
   /** Aggregate-status subscribers (see {@link subscribe}). */
@@ -50,7 +50,7 @@ export class TransportRegistry {
   /** Per-transport status subscriptions, dropped when that transport is disabled. */
   readonly #statusDisposers = new Map<string, Disposer>();
 
-  constructor(plugins: MeetPlugin[]) {
+  constructor(plugins: SurfacePlugin[]) {
     this.#plugins = plugins;
   }
 

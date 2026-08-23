@@ -1,6 +1,6 @@
 import type { Message } from "@callctl/protocol";
-import type { MeetPlugin } from "../../plugins/plugin.js";
 import type { Disposer } from "../disposer.js";
+import type { SurfacePlugin } from "../plugin.js";
 
 export type { Message };
 
@@ -37,7 +37,7 @@ export interface Transport {
   handle: (op: string, h: (msg: Message) => void) => void;
 
   /** Let a plugin install its hooks + handlers onto this transport. */
-  acceptPlugin: (plugin: MeetPlugin) => void;
+  acceptPlugin: (plugin: SurfacePlugin) => void;
 
   /**
    * Park a {@link Disposer} to be run when this transport is detached. The sink
@@ -142,7 +142,7 @@ export abstract class BaseTransport implements Transport {
     this.close();
   }
 
-  acceptPlugin(plugin: MeetPlugin): void {
+  acceptPlugin(plugin: SurfacePlugin): void {
     plugin.installHooks(this);
     plugin.installHandlers(this);
   }

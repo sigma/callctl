@@ -1,8 +1,8 @@
 import type { SelectorConfig } from "@callctl/protocol";
 import { Command, message, StateEvent } from "@callctl/protocol";
+import type { SurfacePlugin } from "../core/plugin.js";
 import type { Transport } from "../core/transport/transport.js";
 import { type SelectorRegistry, selectors } from "../meet/selectors.js";
-import type { MeetPlugin } from "./plugin.js";
 
 /**
  * Config-over-the-wire selectors. Lets the controller (the Stream Deck plugin,
@@ -20,7 +20,7 @@ import type { MeetPlugin } from "./plugin.js";
  */
 export type PersistSelectors = (config: SelectorConfig) => void;
 
-class SelectorsPlugin implements MeetPlugin {
+class SelectorsPlugin implements SurfacePlugin {
   readonly #registry: SelectorRegistry;
   readonly #persist: PersistSelectors;
 
@@ -60,7 +60,7 @@ class SelectorsPlugin implements MeetPlugin {
 export function newSelectorsPlugin(
   persist?: PersistSelectors,
   registry: SelectorRegistry = selectors,
-): MeetPlugin {
+): SurfacePlugin {
   console.log("loading selectors plugin");
   return new SelectorsPlugin(registry, persist);
 }
