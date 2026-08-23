@@ -88,6 +88,9 @@ importers:
 
   packages/plugin:
     dependencies:
+      '@callctl/bridge':
+        specifier: workspace:*
+        version: link:../bridge
       '@callctl/protocol':
         specifier: workspace:*
         version: link:../protocol

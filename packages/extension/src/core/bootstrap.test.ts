@@ -62,6 +62,9 @@ function fakeOnChanged() {
 
 const noPlugins: SurfacePlugin[] = [];
 
+/** A stand-in session: the handshake fields a real surface would supply. */
+const SESSION = () => ({ id: "test-client", surface: "test" });
+
 /** Web MIDI does not exist in jsdom; `MidiTransport` swallows the rejection. */
 function stubMidi(): void {
   vi.stubGlobal("navigator", {
@@ -75,7 +78,13 @@ describe("bootstrap", () => {
     const { local } = fakeStorage({ config: defaultConfig() });
     const { onChanged } = fakeOnChanged();
 
-    const registry = await bootstrap({ local, onChanged, plugins: noPlugins, midi: false });
+    const registry = await bootstrap({
+      local,
+      onChanged,
+      plugins: noPlugins,
+      midi: false,
+      session: SESSION,
+    });
 
     expect(registry.isEnabled(TransportId.WS)).toBe(true);
     expect(registry.isEnabled(TransportId.MIDI)).toBe(false);
@@ -87,7 +96,13 @@ describe("bootstrap", () => {
     const { local } = fakeStorage({ config: defaultConfig() });
     const { onChanged } = fakeOnChanged();
 
-    const registry = await bootstrap({ local, onChanged, plugins: noPlugins, midi: true });
+    const registry = await bootstrap({
+      local,
+      onChanged,
+      plugins: noPlugins,
+      midi: true,
+      session: SESSION,
+    });
 
     expect(registry.isEnabled(TransportId.WS)).toBe(true);
     expect(registry.isEnabled(TransportId.MIDI)).toBe(true);
@@ -101,7 +116,13 @@ describe("bootstrap", () => {
     const { local } = fakeStorage({ config });
     const { onChanged } = fakeOnChanged();
 
-    const registry = await bootstrap({ local, onChanged, plugins: noPlugins, midi: false });
+    const registry = await bootstrap({
+      local,
+      onChanged,
+      plugins: noPlugins,
+      midi: false,
+      session: SESSION,
+    });
 
     expect(registry.isEnabled(TransportId.WS)).toBe(false);
   });
@@ -109,7 +130,13 @@ describe("bootstrap", () => {
   test("a live config write turns ws off and back on", async () => {
     const { local } = fakeStorage({ config: defaultConfig() });
     const { onChanged, write } = fakeOnChanged();
-    const registry = await bootstrap({ local, onChanged, plugins: noPlugins, midi: false });
+    const registry = await bootstrap({
+      local,
+      onChanged,
+      plugins: noPlugins,
+      midi: false,
+      session: SESSION,
+    });
 
     const off = defaultConfig();
     off.ws.enabled = false;
@@ -124,7 +151,13 @@ describe("bootstrap", () => {
   test("a MIDI-less surface ignores the MIDI half of a live config write", async () => {
     const { local } = fakeStorage({ config: defaultConfig() });
     const { onChanged, write } = fakeOnChanged();
-    const registry = await bootstrap({ local, onChanged, plugins: noPlugins, midi: false });
+    const registry = await bootstrap({
+      local,
+      onChanged,
+      plugins: noPlugins,
+      midi: false,
+      session: SESSION,
+    });
 
     write(defaultConfig()); // MIDI enabled in the envelope…
     expect(registry.isEnabled(TransportId.MIDI)).toBe(false); // …still not ours

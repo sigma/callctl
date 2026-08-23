@@ -41,6 +41,13 @@ class FakeWebSocket {
   }
 }
 
+/**
+ * A stand-in session. Every socket opens with the mandatory handshake (ADR
+ * 0001), so the first frame these tests see is always the hello — which is
+ * exactly what `sentAfterHello` skips past.
+ */
+const SESSION = () => ({ id: "test-client", surface: "test" });
+
 describe("WSTransport", () => {
   beforeEach(() => {
     FakeWebSocket.instances.length = 0;
@@ -60,12 +67,12 @@ describe("WSTransport", () => {
   };
 
   test("dials the loopback bridge on the configured port", () => {
-    new WSTransport(2395);
+    new WSTransport(2395, SESSION);
     expect(only().url).toBe("ws://127.0.0.1:2395");
   });
 
   test("fires onConnect when the socket opens", () => {
-    const ws = new WSTransport(2395);
+    const ws = new WSTransport(2395, SESSION);
     const spy = vi.fn();
     ws.onConnect = spy;
     only().open();
@@ -73,7 +80,7 @@ describe("WSTransport", () => {
   });
 
   test("routes an inbound message to the matching handler", () => {
-    const ws = new WSTransport(2395);
+    const ws = new WSTransport(2395, SESSION);
     const handler = vi.fn();
     ws.handle("toggleMic", handler);
     only().message(JSON.stringify({ event: "toggleMic", data: "x" }));
@@ -81,7 +88,7 @@ describe("WSTransport", () => {
   });
 
   test("ignores unknown events and non-JSON without throwing", () => {
-    const ws = new WSTransport(2395);
+    const ws = new WSTransport(2395, SESSION);
     const handler = vi.fn();
     ws.handle("toggleMic", handler);
     expect(() => only().message("{not json")).not.toThrow();
@@ -90,17 +97,49 @@ describe("WSTransport", () => {
   });
 
   test("send serialises only while the socket is OPEN", () => {
-    const ws = new WSTransport(2395);
+    const ws = new WSTransport(2395, SESSION);
     ws.send({ event: "micState", data: "muted" });
     expect(only().sent).toHaveLength(0); // not open yet
 
     only().open();
     ws.send({ event: "micState", data: "muted" });
-    expect(only().sent).toEqual([JSON.stringify({ event: "micState", data: "muted" })]);
+    // Skip the handshake the open itself sends — it is the first frame always.
+    expect(only().sent.slice(1)).toEqual([JSON.stringify({ event: "micState", data: "muted" })]);
+  });
+
+  test("the first frame after open is the handshake, with the derived op set", () => {
+    const ws = new WSTransport(2395, SESSION);
+    ws.handle("meet.toggleMic", vi.fn());
+    ws.handle("meet.getMicState", vi.fn());
+
+    only().open();
+
+    // Capabilities are derived, not declared: whatever the plugins registered
+    // is what travels, so the set cannot drift from the ops that exist.
+    expect(JSON.parse(only().sent[0] as string)).toEqual({
+      event: "session.hello",
+      data: JSON.stringify({
+        id: "test-client",
+        surface: "test",
+        ops: ["meet.toggleMic", "meet.getMicState"],
+      }),
+    });
+  });
+
+  test("rehandshake re-sends the session, so a late label can still travel", () => {
+    let label: string | undefined;
+    const ws = new WSTransport(2395, () => ({ id: "test-client", surface: "test", label }));
+    only().open();
+    only().sent.length = 0;
+
+    label = "arbora.partners";
+    ws.rehandshake();
+
+    expect(JSON.parse(only().sent[0] as string).data).toContain("arbora.partners");
   });
 
   test("reconnects ~2s after an unexpected close", () => {
-    new WSTransport(2395);
+    new WSTransport(2395, SESSION);
     only().close();
     expect(FakeWebSocket.instances).toHaveLength(1);
     vi.advanceTimersByTime(2000);
@@ -108,14 +147,14 @@ describe("WSTransport", () => {
   });
 
   test("detach stops the reconnect loop", () => {
-    const ws = new WSTransport(2395);
+    const ws = new WSTransport(2395, SESSION);
     ws.detach();
     vi.advanceTimersByTime(10000);
     expect(FakeWebSocket.instances).toHaveLength(1);
   });
 
   test("detach runs parked disposers and unwires handlers", () => {
-    const ws = new WSTransport(2395);
+    const ws = new WSTransport(2395, SESSION);
     const disposed = vi.fn();
     ws.onDetach(disposed);
     const handler = vi.fn();
@@ -130,7 +169,7 @@ describe("WSTransport", () => {
   });
 
   test("retarget redials on the new port, keeping the reconnect loop alive", () => {
-    const ws = new WSTransport(2395);
+    const ws = new WSTransport(2395, SESSION);
     only().open();
 
     ws.retarget(2396); // closes the current socket…
@@ -140,7 +179,7 @@ describe("WSTransport", () => {
   });
 
   test("retarget to the same port is a no-op", () => {
-    const ws = new WSTransport(2395);
+    const ws = new WSTransport(2395, SESSION);
     only().open();
     ws.retarget(2395);
     vi.advanceTimersByTime(2000);
@@ -148,7 +187,7 @@ describe("WSTransport", () => {
   });
 
   test("active tracks the socket: false while connecting, true once open, false on close", () => {
-    const ws = new WSTransport(2395);
+    const ws = new WSTransport(2395, SESSION);
     expect(ws.active()).toBe(false); // connecting
 
     only().open();
@@ -159,7 +198,7 @@ describe("WSTransport", () => {
   });
 
   test("onStatusChange fires on each genuine open/close transition only", () => {
-    const ws = new WSTransport(2395);
+    const ws = new WSTransport(2395, SESSION);
     const onChange = vi.fn();
     ws.onStatusChange(onChange);
 
@@ -175,7 +214,7 @@ describe("WSTransport", () => {
   });
 
   test("onStatusChange unsubscribe stops delivery", () => {
-    const ws = new WSTransport(2395);
+    const ws = new WSTransport(2395, SESSION);
     const onChange = vi.fn();
     const off = ws.onStatusChange(onChange);
     off();
@@ -184,7 +223,7 @@ describe("WSTransport", () => {
   });
 
   test("retarget keeps installed handlers intact across the redial", () => {
-    const ws = new WSTransport(2395);
+    const ws = new WSTransport(2395, SESSION);
     const handler = vi.fn();
     ws.handle("toggleMic", handler);
 
