@@ -139,6 +139,84 @@ describe("Bridge", () => {
     expect(bridge.clients.all().map((c) => c.id)).toEqual(["m1", "m2"]);
   });
 
+  describe("clients that share an id", () => {
+    // Two connections legitimately bear one id: a second Meet tab, and — until
+    // the id gained a surface discriminator — the two content scripts of a
+    // single extension install. Sharing an id must never mean sharing a slot.
+
+    test("a Meet tab does not knock a Chat client out of the registry", async () => {
+      const INSTALL = "one-install-id";
+      const chat = await FakeClient.connect(port, hello(INSTALL, "chat", CHAT_OPS));
+      await settle();
+      expect(bridge.handles("chat.getRoster")).toBe(true);
+
+      await FakeClient.connect(port, hello(INSTALL, "meet", MEET_OPS));
+      await settle();
+
+      // The reported bug: opening a Meet knocked every Chat key dark.
+      expect(bridge.handles("chat.getRoster")).toBe(true);
+      expect(bridge.handles("meet.toggleMic")).toBe(true);
+      bridge.send(message("chat.getRoster"));
+      expect(await chat.next()).toEqual({ event: "chat.getRoster" });
+    });
+
+    test("closing a superseded socket does not evict the live client", async () => {
+      const first = await FakeClient.connect(port, hello("m", "meet", MEET_OPS));
+      await settle();
+      const second = await FakeClient.connect(port, hello("m", "meet", MEET_OPS));
+      await settle();
+
+      await first.close();
+      await settle();
+
+      // `MeetRemote` used to guard this with `if (this.#conn === conn)`; the
+      // guard was lost when the registry took over, so two Meet tabs plus one
+      // close went dark until a reload.
+      expect(bridge.handles("meet.toggleMic")).toBe(true);
+      bridge.send(message("meet.toggleMic"));
+      expect(await second.next()).toEqual({ event: "meet.toggleMic" });
+    });
+
+    test("closing the newest leaves the older one routable", async () => {
+      const first = await FakeClient.connect(port, hello("m", "meet", MEET_OPS));
+      await settle();
+      const second = await FakeClient.connect(port, hello("m", "meet", MEET_OPS));
+      await settle();
+
+      await second.close();
+      await settle();
+
+      expect(bridge.handles("meet.toggleMic")).toBe(true);
+      bridge.send(message("meet.toggleMic"));
+      expect(await first.next()).toEqual({ event: "meet.toggleMic" });
+    });
+
+    test("a targeted command reaches the newest bearer of that id", async () => {
+      const first = await FakeClient.connect(port, hello("m", "meet", MEET_OPS));
+      await settle();
+      const second = await FakeClient.connect(port, hello("m", "meet", MEET_OPS));
+      await settle();
+
+      bridge.send(message("meet.toggleMic", undefined, "m"));
+
+      expect(await second.next()).toEqual({ event: "meet.toggleMic", client: "m" });
+      expect(first.received).toEqual([]);
+    });
+
+    test("detaching one of two leaves the other's capabilities intact", async () => {
+      const INSTALL = "one-install-id";
+      const chat = await FakeClient.connect(port, hello(INSTALL, "chat", CHAT_OPS));
+      await FakeClient.connect(port, hello(INSTALL, "meet", MEET_OPS));
+      await settle();
+
+      await chat.close();
+      await settle();
+
+      expect(bridge.handles("chat.getRoster")).toBe(false);
+      expect(bridge.handles("meet.toggleMic")).toBe(true);
+    });
+  });
+
   describe("the mandatory handshake", () => {
     test("a client that speaks before handshaking is refused, loudly", async () => {
       const stale = await FakeClient.connectRaw(port);
