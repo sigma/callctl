@@ -62,6 +62,30 @@
       <code>arbora.partners</code>, which is cramped to unreadable at key size.
     </p>
 
+    <div class="row">
+      <label for="profile">Profile</label>
+      <input id="profile" type="text" placeholder="Default" />
+    </div>
+    <p class="hint">
+      The Chrome profile directory to launch into, so the right account's Chat
+      opens. It is the folder name under your Chrome user-data directory —
+      <code>Default</code>, <code>Profile 1</code>, … — shown as
+      <em>Profile Path</em> on <code>chrome://version</code>.
+    </p>
+
+    <div class="row">
+      <label for="appId">Chat app ID</label>
+      <input id="appId" type="text" placeholder="not installed as an app" />
+    </div>
+    <p class="hint">
+      Pressing a dark key launches the installed Chat app. The ID is
+      <strong>configuration, not computed</strong> — the documented derivation
+      yields a different value from the installed app's actual ID. Find it on
+      <code>chrome://web-app-internals</code> (or, on macOS, as
+      <code>CrAppModeShortcutID</code> in the app shim's <code>Info.plist</code>).
+      Left empty, pressing opens Chat in a tab instead.
+    </p>
+
     <script>
       "use strict";
 
@@ -85,12 +109,16 @@
           profile: typeof s.profile === "string" ? s.profile : "",
         };
         document.querySelector("#label").value = settings.label;
+        document.querySelector("#profile").value = settings.profile;
+        document.querySelector("#appId").value = settings.appId;
       }
 
-      document.querySelector("#label").addEventListener("change", (ev) => {
-        settings.label = ev.target.value.trim();
-        save();
-      });
+      for (const field of ["label", "profile", "appId"]) {
+        document.querySelector("#" + field).addEventListener("change", (ev) => {
+          settings[field] = ev.target.value.trim();
+          save();
+        });
+      }
 
       function onMessage(ev) {
         let msg;

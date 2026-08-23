@@ -4,7 +4,7 @@ import type { SingletonAction } from "@elgato/streamdeck";
 import type { CalendarService } from "../calendar/service.js";
 import type { ChatRemote } from "../remote/chat-remote.js";
 import type { MeetRemote } from "../remote/meet-remote.js";
-import { ChatUnreadAction } from "./chat-unread-action.js";
+import { ChatUnreadAction, type ChatUnreadDeps } from "./chat-unread-action.js";
 import { NextMeetingAction, type NextMeetingDeps } from "./next-meeting-action.js";
 import { SimpleAction } from "./simple-action.js";
 import { ToggleAction } from "./toggle-action.js";
@@ -27,6 +27,7 @@ export function buildActions(
   calendar: CalendarService,
   nextMeetingDeps: NextMeetingDeps = {},
   chat?: ChatRemote,
+  chatDeps: ChatUnreadDeps = {},
 ): SingletonAction[] {
   const actions: SingletonAction[] = [];
 
@@ -113,7 +114,7 @@ export function buildActions(
   // The Chat unread key. Surface-specific, so it hangs off its own remote —
   // `MeetRemote` knows nothing about it, and neither drives the other.
   if (chat !== undefined) {
-    actions.push(new ChatUnreadAction(uuid("chat-unread"), chat));
+    actions.push(new ChatUnreadAction(uuid("chat-unread"), chat, chatDeps));
   }
 
   return actions;
