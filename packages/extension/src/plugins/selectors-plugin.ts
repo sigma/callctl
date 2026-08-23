@@ -1,4 +1,4 @@
-import type { SelectorConfig } from "@callctl/protocol";
+import type { MeetSelectorConfig } from "@callctl/protocol";
 import { Command, message, StateEvent } from "@callctl/protocol";
 import type { MidiAddressable, SurfacePlugin } from "../core/plugin.js";
 import type { Transport } from "../core/transport/transport.js";
@@ -18,7 +18,7 @@ import { type SelectorRegistry, selectors } from "../meet/selectors.js";
  *   ← { event: "meet.setSelectors", data: <partial JSON> } → merge, persist, push back
  *   → { event: "meet.selectors", data: <full config JSON> }
  */
-export type PersistSelectors = (config: SelectorConfig) => void;
+export type PersistSelectors = (config: MeetSelectorConfig) => void;
 
 class SelectorsPlugin implements SurfacePlugin, MidiAddressable {
   readonly #registry: SelectorRegistry;

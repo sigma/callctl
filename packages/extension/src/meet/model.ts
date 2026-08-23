@@ -11,7 +11,7 @@
  * pushed over the wire without rebuilding this file.
  */
 
-import { SelectorKey } from "@callctl/protocol";
+import { MeetSelectorKey } from "@callctl/protocol";
 import type { Disposer } from "../core/disposer.js";
 import { type SelectorRegistry, selectors } from "./selectors.js";
 
@@ -53,9 +53,9 @@ export enum InputDevice {
 }
 
 /** The configurable selector key that matches a given input device's button. */
-const DEVICE_SELECTOR: Record<InputDevice, SelectorKey> = {
-  [InputDevice.CAMERA]: SelectorKey.Camera,
-  [InputDevice.MIC]: SelectorKey.Mic,
+const DEVICE_SELECTOR: Record<InputDevice, MeetSelectorKey> = {
+  [InputDevice.CAMERA]: MeetSelectorKey.Camera,
+  [InputDevice.MIC]: MeetSelectorKey.Mic,
 };
 
 /** Thrown when a Meet control isn't in the DOM yet (expected at startup). */

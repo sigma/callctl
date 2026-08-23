@@ -1,4 +1,4 @@
-import { message, SelectorKey, StateEvent } from "@callctl/protocol";
+import { MeetSelectorKey, message, StateEvent } from "@callctl/protocol";
 import type { Disposer } from "../core/disposer.js";
 import type { MidiAddressable, SurfacePlugin } from "../core/plugin.js";
 import type { Transport } from "../core/transport/transport.js";
@@ -12,7 +12,7 @@ import { type SelectorRegistry, selectors } from "../meet/selectors.js";
  *
  * "Joined" is proven by **two** conditions together:
  *   1. the Meet URL carries a valid meeting **code**, and
- *   2. the **"Leave call"** button is present ({@link SelectorKey.Leave}).
+ *   2. the **"Leave call"** button is present ({@link MeetSelectorKey.Leave}).
  *
  * The Leave button renders only once you are admitted and in the call, so
  * requiring it avoids false positives from the green room / admission lobby
@@ -88,7 +88,7 @@ class HTMLCallStateModel implements CallStateModel {
     const code = this.#urlCode();
     if (code === undefined) return undefined;
     // Require in-call proof: the Leave button is only present once admitted.
-    if (this.#model.getElement(this.#selectors.get(SelectorKey.Leave)) === undefined) {
+    if (this.#model.getElement(this.#selectors.get(MeetSelectorKey.Leave)) === undefined) {
       return undefined;
     }
     return `${MEET_PREFIX}${code}`;

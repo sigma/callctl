@@ -129,8 +129,8 @@ Every Meet control the extension drives is matched by an **accessible-name
 substring** (or, for mic/camera, an aria-label substring on `[data-is-muted]`).
 Google renames these over time — the usual cause of "a command builds but clicks
 nothing". Those substrings are **runtime data**, not hardcoded: they live in a
-`SelectorConfig` the extension holds in a `SelectorRegistry`, seeded from
-`DEFAULT_SELECTORS` (`@callctl/protocol`) and overridable over the wire.
+`MeetSelectorConfig` the extension holds in a `SelectorRegistry`, seeded from
+`DEFAULT_MEET_SELECTORS` (`@callctl/protocol`) and overridable over the wire.
 
 Keys: `mic`, `camera`, `leave`, `participants`, `chat`, `handRaise`, `handLower`,
 `reactionOpener`.
@@ -146,7 +146,7 @@ Because every DOM lookup reads the registry **fresh**, a pushed override takes
 effect on the *next command* — **no rebuild, no tab reload, no dropped call**.
 The extension also persists overrides to `chrome.storage.local` (`selectors`
 key) and re-applies them on load, so a field fix survives reloads. A malformed or
-empty value is ignored (`mergeSelectors`), so a bad push can never blank a
+empty value is ignored (`mergeMeetSelectors`), so a bad push can never blank a
 selector out.
 
 **The drift-fix loop** (with a bridge up and a call open):
@@ -159,7 +159,7 @@ curl -X POST localhost:2397/selectors \
 # → merged config echoed back; retry the deck button — no reload needed
 ```
 
-Once a fix is confirmed live, fold it into `DEFAULT_SELECTORS` so a clean install
+Once a fix is confirmed live, fold it into `DEFAULT_MEET_SELECTORS` so a clean install
 gets it too (that part *is* a code change + release, but no longer time-critical).
 
 ## Typical loops

@@ -1,4 +1,4 @@
-import { message, SelectorKey, StateEvent, StateValue } from "@callctl/protocol";
+import { MeetSelectorKey, message, StateEvent, StateValue } from "@callctl/protocol";
 import type { Transport } from "../core/transport/transport.js";
 import { ControlsNotFoundError, InputDevice, type Model } from "./model.js";
 import { type SelectorRegistry, selectors } from "./selectors.js";
@@ -85,16 +85,16 @@ export class ModeledAPI implements API {
   }
 
   leaveCall(): void {
-    this.#model.getElement(this.#selectors.get(SelectorKey.Leave))?.click();
+    this.#model.getElement(this.#selectors.get(MeetSelectorKey.Leave))?.click();
   }
 
   toggleParticipants(): void {
     // Meet renamed this control: it is now the hover-tray "People" button, whose
     // accessible name comes via aria-labelledby (see HTMLModel.#accessibleName).
-    this.#model.getElement(this.#selectors.get(SelectorKey.Participants))?.click();
+    this.#model.getElement(this.#selectors.get(MeetSelectorKey.Participants))?.click();
   }
 
   toggleChat(): void {
-    this.#model.getElement(this.#selectors.get(SelectorKey.Chat))?.click();
+    this.#model.getElement(this.#selectors.get(MeetSelectorKey.Chat))?.click();
   }
 }

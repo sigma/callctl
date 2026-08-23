@@ -1,34 +1,34 @@
 import {
-  DEFAULT_SELECTORS,
-  mergeSelectors,
-  type SelectorConfig,
-  type SelectorKey,
+  DEFAULT_MEET_SELECTORS,
+  type MeetSelectorConfig,
+  type MeetSelectorKey,
+  mergeMeetSelectors,
 } from "@callctl/protocol";
 
 /**
  * The extension's live view of the Meet selectors (see the protocol's
- * `selectors.ts` for the why). Seeded from {@link DEFAULT_SELECTORS} and mutated
+ * `selectors.ts` for the why). Seeded from {@link DEFAULT_MEET_SELECTORS} and mutated
  * in place by a `setSelectors` push. Every DOM lookup reads `get(key)` fresh, so
  * an override takes effect on the very next command with no rebuild or reload.
  */
 export class SelectorRegistry {
-  #config: SelectorConfig;
+  #config: MeetSelectorConfig;
 
   constructor(initial: Partial<Record<string, unknown>> = {}) {
-    this.#config = mergeSelectors(DEFAULT_SELECTORS, initial);
+    this.#config = mergeMeetSelectors(DEFAULT_MEET_SELECTORS, initial);
   }
 
-  get(key: SelectorKey): string {
+  get(key: MeetSelectorKey): string {
     return this.#config[key];
   }
 
-  all(): SelectorConfig {
+  all(): MeetSelectorConfig {
     return { ...this.#config };
   }
 
   /** Merge overrides in and return the resulting full config. */
-  apply(partial: Partial<Record<string, unknown>>): SelectorConfig {
-    this.#config = mergeSelectors(this.#config, partial);
+  apply(partial: Partial<Record<string, unknown>>): MeetSelectorConfig {
+    this.#config = mergeMeetSelectors(this.#config, partial);
     return this.all();
   }
 }
