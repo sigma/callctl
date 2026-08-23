@@ -37,7 +37,7 @@ async function init(
     persistSelectors: (config) => saveChatSelectors(local, config),
   });
 
-  const id = await loadClientId(local);
+  const id = await loadClientId(local, "chat");
 
   // Which account this window is. It may not be knowable yet — the anchor was
   // observed a few seconds after load, and whether it exists at `document_idle`

@@ -34,7 +34,7 @@ async function init(
 
   // Identity is per extension install (ADR 0001); the surface name is coarse
   // and rides along for logs and UI only — routing reads the derived op set.
-  const id = await loadClientId(local);
+  const id = await loadClientId(local, "meet");
   const registry = await bootstrap({
     local,
     onChanged,
