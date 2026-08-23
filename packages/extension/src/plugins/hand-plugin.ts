@@ -1,4 +1,4 @@
-import { Command, message, SelectorKey, StateEvent, StateValue } from "@callctl/protocol";
+import { Command, MeetSelectorKey, message, StateEvent, StateValue } from "@callctl/protocol";
 import type { Disposer } from "../core/disposer.js";
 import type { MidiAddressable, SurfacePlugin } from "../core/plugin.js";
 import type { Transport } from "../core/transport/transport.js";
@@ -67,8 +67,10 @@ class HTMLHandModel implements HandModel {
   }
 
   #rescan(): void {
-    const raise = this.#model.getElement(this.#selectors.get(SelectorKey.HandRaise)) !== undefined;
-    const lower = this.#model.getElement(this.#selectors.get(SelectorKey.HandLower)) !== undefined;
+    const raise =
+      this.#model.getElement(this.#selectors.get(MeetSelectorKey.HandRaise)) !== undefined;
+    const lower =
+      this.#model.getElement(this.#selectors.get(MeetSelectorKey.HandLower)) !== undefined;
     if (!raise && !lower) {
       return; // the toolbar hand button isn't present right now — don't guess
     }
@@ -88,7 +90,7 @@ class HTMLHandModel implements HandModel {
    * the substring "Lower hand", so they don't confuse this.)
    */
   getHandState(): boolean {
-    return this.#model.getElement(this.#selectors.get(SelectorKey.HandLower)) === undefined;
+    return this.#model.getElement(this.#selectors.get(MeetSelectorKey.HandLower)) === undefined;
   }
 
   getElement(label: string): UIElement | undefined {
@@ -141,17 +143,19 @@ export class ModeledHandAPI implements HandAPI {
   }
 
   raiseHand(): void {
-    this.#model.getElement(this.#selectors.get(SelectorKey.HandRaise))?.click();
+    this.#model.getElement(this.#selectors.get(MeetSelectorKey.HandRaise))?.click();
   }
 
   lowerHand(): void {
-    this.#model.getElement(this.#selectors.get(SelectorKey.HandLower))?.click();
+    this.#model.getElement(this.#selectors.get(MeetSelectorKey.HandLower))?.click();
   }
 
   toggleHand(): void {
-    const raise = this.#model.getElement(this.#selectors.get(SelectorKey.HandRaise));
+    const raise = this.#model.getElement(this.#selectors.get(MeetSelectorKey.HandRaise));
     const button =
-      raise != null ? raise : this.#model.getElement(this.#selectors.get(SelectorKey.HandLower));
+      raise != null
+        ? raise
+        : this.#model.getElement(this.#selectors.get(MeetSelectorKey.HandLower));
     button?.click();
   }
 }

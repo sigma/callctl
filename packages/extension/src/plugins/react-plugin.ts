@@ -1,4 +1,4 @@
-import { Command, REACTION_SLUGS, reactionLabel, SelectorKey } from "@callctl/protocol";
+import { Command, MeetSelectorKey, REACTION_SLUGS, reactionLabel } from "@callctl/protocol";
 import type { MidiAddressable, SurfacePlugin } from "../core/plugin.js";
 import type { Transport } from "../core/transport/transport.js";
 import { type SelectorRegistry, selectors } from "../meet/selectors.js";
@@ -84,7 +84,7 @@ export class ReactAPI {
     let button = glyphButton(this.#doc, glyph);
     if (button === null) {
       // Panel is closed — open it, then wait for the glyph button to render.
-      const opener = this.#selectors.get(SelectorKey.ReactionOpener);
+      const opener = this.#selectors.get(MeetSelectorKey.ReactionOpener);
       this.#doc.querySelector<HTMLElement>(`button[aria-label="${opener}"]`)?.click();
       button = await waitFor(() => glyphButton(this.#doc, glyph), OPEN_WAIT_MS);
     }

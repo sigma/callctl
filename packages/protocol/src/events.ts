@@ -65,7 +65,7 @@ export const StateEvent = {
    * dismiss the late state the instant you actually join — never drives Meet.
    */
   CallState: "meet.callState",
-  /** Full {@link SelectorConfig} JSON, pushed after get/set-selectors. */
+  /** Full {@link MeetSelectorConfig} JSON, pushed after get/set-selectors. */
   Selectors: "meet.selectors",
 } as const;
 export type StateEvent = (typeof StateEvent)[keyof typeof StateEvent];

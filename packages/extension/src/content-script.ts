@@ -1,4 +1,4 @@
-import type { SelectorConfig } from "@callctl/protocol";
+import type { MeetSelectorConfig } from "@callctl/protocol";
 import { bootstrap } from "./core/bootstrap.js";
 import { isMeetingUrl } from "./meet/location.js";
 import { selectors } from "./meet/selectors.js";
@@ -23,7 +23,7 @@ function init(
   local: chrome.storage.LocalStorageArea,
   onChanged: typeof chrome.storage.onChanged,
 ): void {
-  local.get<{ selectors: Partial<SelectorConfig> }>({ selectors: {} }, async (result) => {
+  local.get<{ selectors: Partial<MeetSelectorConfig> }>({ selectors: {} }, async (result) => {
     // Overlay any selector overrides fixed in a previous session (or pushed
     // over the wire and persisted) before the plugins' models start reading.
     selectors.apply(result.selectors ?? {});

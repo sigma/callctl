@@ -7,9 +7,9 @@ import {
   type DebugOp,
   type DebugRequest,
   type DebugResponse,
+  type MeetSelectorConfig,
   type Message,
   message,
-  type SelectorConfig,
   StateEvent,
   StateValue,
 } from "@callctl/protocol";
@@ -73,7 +73,7 @@ export class DebugBridge {
   #hand: BridgeState["hand"] = "unknown";
 
   /** Waiters for the next `selectors` push (get/set-selectors replies). */
-  readonly #selectorWaiters = new Set<(c: SelectorConfig) => void>();
+  readonly #selectorWaiters = new Set<(c: MeetSelectorConfig) => void>();
 
   constructor(opts: BridgeOptions) {
     this.#opts = {
@@ -239,25 +239,25 @@ export class DebugBridge {
   }
 
   /** Read the extension's live selector config (fires `getSelectors`). */
-  getSelectors(): Promise<SelectorConfig> {
+  getSelectors(): Promise<MeetSelectorConfig> {
     return this.#requestSelectors(Command.GetSelectors);
   }
 
   /** Push a partial selector override and await the merged config back. */
-  setSelectors(partial: Record<string, unknown>): Promise<SelectorConfig> {
+  setSelectors(partial: Record<string, unknown>): Promise<MeetSelectorConfig> {
     return this.#requestSelectors(Command.SetSelectors, JSON.stringify(partial));
   }
 
-  #requestSelectors(event: string, data?: string): Promise<SelectorConfig> {
+  #requestSelectors(event: string, data?: string): Promise<MeetSelectorConfig> {
     if (this.#ext === null) {
       return Promise.reject(new Error("no extension connected"));
     }
-    return new Promise<SelectorConfig>((resolve, reject) => {
+    return new Promise<MeetSelectorConfig>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.#selectorWaiters.delete(waiter);
         reject(new Error(`${event} timed out after ${this.#opts.debugTimeoutMs}ms`));
       }, this.#opts.debugTimeoutMs);
-      const waiter = (config: SelectorConfig) => {
+      const waiter = (config: MeetSelectorConfig) => {
         clearTimeout(timer);
         resolve(config);
       };
@@ -267,9 +267,9 @@ export class DebugBridge {
   }
 
   #resolveSelectors(data: string | undefined): void {
-    let config: SelectorConfig;
+    let config: MeetSelectorConfig;
     try {
-      config = JSON.parse(data ?? "{}") as SelectorConfig;
+      config = JSON.parse(data ?? "{}") as MeetSelectorConfig;
     } catch {
       this.#log(`ignoring malformed selectors push: ${data}`);
       return;

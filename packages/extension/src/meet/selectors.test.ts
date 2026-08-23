@@ -1,4 +1,4 @@
-import { DEFAULT_SELECTORS, SelectorKey } from "@callctl/protocol";
+import { DEFAULT_MEET_SELECTORS, MeetSelectorKey } from "@callctl/protocol";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { Message } from "../core/transport/transport.js";
 import { newSelectorsPlugin } from "../plugins/selectors-plugin.js";
@@ -49,24 +49,24 @@ afterEach(() => {
 });
 
 describe("SelectorRegistry", () => {
-  test("defaults come from DEFAULT_SELECTORS", () => {
+  test("defaults come from DEFAULT_MEET_SELECTORS", () => {
     const reg = new SelectorRegistry();
-    expect(reg.get(SelectorKey.Leave)).toBe(DEFAULT_SELECTORS.leave);
-    expect(reg.all()).toEqual(DEFAULT_SELECTORS);
+    expect(reg.get(MeetSelectorKey.Leave)).toBe(DEFAULT_MEET_SELECTORS.leave);
+    expect(reg.all()).toEqual(DEFAULT_MEET_SELECTORS);
   });
 
   test("apply merges a partial and ignores unknown/empty/non-string keys", () => {
     const reg = new SelectorRegistry();
     reg.apply({ leave: "Hang up", bogus: "x", chat: "", participants: 42 });
-    expect(reg.get(SelectorKey.Leave)).toBe("Hang up"); // overridden
-    expect(reg.get(SelectorKey.Chat)).toBe(DEFAULT_SELECTORS.chat); // empty ignored
-    expect(reg.get(SelectorKey.Participants)).toBe(DEFAULT_SELECTORS.participants); // non-string ignored
+    expect(reg.get(MeetSelectorKey.Leave)).toBe("Hang up"); // overridden
+    expect(reg.get(MeetSelectorKey.Chat)).toBe(DEFAULT_MEET_SELECTORS.chat); // empty ignored
+    expect(reg.get(MeetSelectorKey.Participants)).toBe(DEFAULT_MEET_SELECTORS.participants); // non-string ignored
     expect("bogus" in reg.all()).toBe(false);
   });
 
   test("initial overrides are applied at construction", () => {
     const reg = new SelectorRegistry({ mic: "mikrofon" });
-    expect(reg.get(SelectorKey.Mic)).toBe("mikrofon");
+    expect(reg.get(MeetSelectorKey.Mic)).toBe("mikrofon");
   });
 });
 
@@ -96,7 +96,7 @@ describe("SelectorsPlugin round-trip", () => {
     fire("meet.getSelectors");
     expect(sent).toHaveLength(1);
     expect(sent[0].event).toBe("meet.selectors");
-    expect(JSON.parse(sent[0].data ?? "{}")).toEqual(DEFAULT_SELECTORS);
+    expect(JSON.parse(sent[0].data ?? "{}")).toEqual(DEFAULT_MEET_SELECTORS);
   });
 
   test("setSelectors merges, persists, and pushes back the merged config", () => {
@@ -107,7 +107,7 @@ describe("SelectorsPlugin round-trip", () => {
 
     fire("meet.setSelectors", JSON.stringify({ handRaise: "Put hand up" }));
 
-    expect(reg.get(SelectorKey.HandRaise)).toBe("Put hand up");
+    expect(reg.get(MeetSelectorKey.HandRaise)).toBe("Put hand up");
     expect(persisted).toHaveLength(1);
     const pushed = JSON.parse(sent.at(-1)?.data ?? "{}");
     expect(pushed.handRaise).toBe("Put hand up");
@@ -119,6 +119,6 @@ describe("SelectorsPlugin round-trip", () => {
     newSelectorsPlugin(() => {}, reg).installHandlers(transport);
 
     fire("meet.setSelectors", "}{ not json");
-    expect(reg.all()).toEqual(DEFAULT_SELECTORS);
+    expect(reg.all()).toEqual(DEFAULT_MEET_SELECTORS);
   });
 });

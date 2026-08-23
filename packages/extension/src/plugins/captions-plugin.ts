@@ -1,4 +1,4 @@
-import { Command, message, SelectorKey, StateEvent, StateValue } from "@callctl/protocol";
+import { Command, MeetSelectorKey, message, StateEvent, StateValue } from "@callctl/protocol";
 import type { Disposer } from "../core/disposer.js";
 import type { MidiAddressable, SurfacePlugin } from "../core/plugin.js";
 import type { Transport } from "../core/transport/transport.js";
@@ -69,8 +69,10 @@ class HTMLCaptionsModel implements CaptionsModel {
   }
 
   #rescan(): void {
-    const on = this.#model.getElement(this.#selectors.get(SelectorKey.CaptionsOn)) !== undefined;
-    const off = this.#model.getElement(this.#selectors.get(SelectorKey.CaptionsOff)) !== undefined;
+    const on =
+      this.#model.getElement(this.#selectors.get(MeetSelectorKey.CaptionsOn)) !== undefined;
+    const off =
+      this.#model.getElement(this.#selectors.get(MeetSelectorKey.CaptionsOff)) !== undefined;
     if (!on && !off) {
       return; // the toolbar captions button isn't present right now — don't guess
     }
@@ -88,7 +90,7 @@ class HTMLCaptionsModel implements CaptionsModel {
    * captions" button is only present while captions are enabled.
    */
   getCaptionsState(): boolean {
-    return this.#model.getElement(this.#selectors.get(SelectorKey.CaptionsOff)) !== undefined;
+    return this.#model.getElement(this.#selectors.get(MeetSelectorKey.CaptionsOff)) !== undefined;
   }
 
   getElement(label: string): UIElement | undefined {
@@ -141,17 +143,17 @@ export class ModeledCaptionsAPI implements CaptionsAPI {
   }
 
   enableCaptions(): void {
-    this.#model.getElement(this.#selectors.get(SelectorKey.CaptionsOn))?.click();
+    this.#model.getElement(this.#selectors.get(MeetSelectorKey.CaptionsOn))?.click();
   }
 
   disableCaptions(): void {
-    this.#model.getElement(this.#selectors.get(SelectorKey.CaptionsOff))?.click();
+    this.#model.getElement(this.#selectors.get(MeetSelectorKey.CaptionsOff))?.click();
   }
 
   toggleCaptions(): void {
-    const on = this.#model.getElement(this.#selectors.get(SelectorKey.CaptionsOn));
+    const on = this.#model.getElement(this.#selectors.get(MeetSelectorKey.CaptionsOn));
     const button =
-      on != null ? on : this.#model.getElement(this.#selectors.get(SelectorKey.CaptionsOff));
+      on != null ? on : this.#model.getElement(this.#selectors.get(MeetSelectorKey.CaptionsOff));
     button?.click();
   }
 }
