@@ -55,7 +55,9 @@ export class WSTransport extends BaseTransport implements Retargetable<number> {
     this.#ws = ws;
 
     ws.onerror = (event) => {
-      console.error("WebSocket error; closing and reconnecting:", event);
+      // Expected whenever the plugin isn't running (it fires on every 2s retry),
+      // and the Event carries no detail, so keep it out of the extension's error list.
+      console.debug("WebSocket error; closing and reconnecting:", event);
       // Closing here funnels into onclose, which schedules the retry.
       ws.close();
     };
