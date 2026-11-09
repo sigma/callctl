@@ -45,6 +45,12 @@ describe("HTMLCallStateModel.getCallState — join proof (§10)", () => {
     expect(model().getCallState()).toBe("gmeet:abc-defg-hij");
   });
 
+  test("reads the code from Meet's /meet/<code> path form", () => {
+    setLeaveButton(true);
+    href = "https://meet.google.com/meet/abc-defg-hij";
+    expect(model().getCallState()).toBe("gmeet:abc-defg-hij");
+  });
+
   test("no data in the green room — valid code but no Leave button yet", () => {
     setLeaveButton(false); // admitted-but-not-joined: same URL, no Leave button
     expect(model().getCallState()).toBeUndefined();

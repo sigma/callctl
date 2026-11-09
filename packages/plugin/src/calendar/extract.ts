@@ -16,12 +16,11 @@
  * *not* config-over-the-wire (§6.2, §12).
  */
 
+import { meetCodeFromPath } from "@callctl/protocol";
 import type { JoinCandidate, ParsedEvent } from "./types.js";
 
 // ── Canonicalization patterns (§6.2) — hard-coded, never config-over-the-wire ──
 
-/** Google Meet code, e.g. `abc-def-ghi`. */
-const MEET_CODE = /^[a-z]{3}-[a-z]{4}-[a-z]{3}$/;
 /** Zoom host: `zoom.us` or a single `<sub>.zoom.us` label. */
 const ZOOM_HOST = /^([a-z0-9-]{1,63}\.)?zoom\.us$/;
 /** Zoom numeric meeting id. */
@@ -146,8 +145,8 @@ function canonicalize(raw: string): JoinCandidate | null {
 
   // Google Meet — full reconstruct; discard all query and fragment.
   if (host === "meet.google.com") {
-    const code = u.pathname.replace(/^\/+/, "").split("/")[0] ?? "";
-    if (MEET_CODE.test(code)) {
+    const code = meetCodeFromPath(u.pathname);
+    if (code !== undefined) {
       return {
         tier: "a",
         provider: "gmeet",

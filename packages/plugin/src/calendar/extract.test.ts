@@ -118,6 +118,16 @@ describe("Google Meet canonicalization (§6.2)", () => {
     });
   });
 
+  it("reads the code from Meet's /meet/<code> path form", () => {
+    const result = extractJoinCandidate(
+      ev({ "GOOGLE-CONFERENCE": "https://meet.google.com/meet/abc-defg-hij" }),
+    );
+    expect(result).toMatchObject({
+      code: "gmeet:abc-defg-hij",
+      joinUrl: "https://meet.google.com/abc-defg-hij",
+    });
+  });
+
   it("forces https even if the extracted value was http", () => {
     const result = extractJoinCandidate(
       ev({ "GOOGLE-CONFERENCE": "http://meet.google.com/abc-defg-hij" }),
