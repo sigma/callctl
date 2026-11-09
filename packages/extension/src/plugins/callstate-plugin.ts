@@ -1,4 +1,4 @@
-import { MeetSelectorKey, message, StateEvent } from "@callctl/protocol";
+import { MeetSelectorKey, meetCodeFromPath, message, StateEvent } from "@callctl/protocol";
 import type { Disposer } from "../core/disposer.js";
 import type { MidiAddressable, SurfacePlugin } from "../core/plugin.js";
 import type { Transport } from "../core/transport/transport.js";
@@ -27,8 +27,6 @@ import { type SelectorRegistry, selectors } from "../meet/selectors.js";
  * additive change subscriptions, and a push on connect via {@link Transport}.
  */
 
-/** Google Meet meeting code, e.g. `abc-def-ghi` — mirrors the plugin-side canonical form (§6.2). */
-const MEET_CODE = /^[a-z]{3}-[a-z]{4}-[a-z]{3}$/;
 /** Provider namespace on the emitted key (§10); the extension only detects Meet today. */
 const MEET_PREFIX = "gmeet:";
 
@@ -103,8 +101,7 @@ class HTMLCallStateModel implements CallStateModel {
       return undefined;
     }
     if (url.host !== "meet.google.com") return undefined;
-    const code = url.pathname.replace(/^\/+/, "").split("/")[0] ?? "";
-    return MEET_CODE.test(code) ? code : undefined;
+    return meetCodeFromPath(url.pathname);
   }
 
   #scheduleRescan(): void {
